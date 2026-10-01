@@ -51,6 +51,17 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const isSampleExam = exam.id.includes('2025-zerspaner');
   const pageImagePath = `/sample-exam/pages/page_${currentPage}.png`;
 
+function formatPdfEmbedUrl(url: string, page: number): string {
+  if (!url) return '';
+  // Erkennung von Google Drive Freigabelinks (z. B. drive.google.com/file/d/.../view)
+  const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (driveMatch) {
+    const fileId = driveMatch[1];
+    return `https://drive.google.com/file/d/${fileId}/preview`;
+  }
+  return `${url}#page=${page}`;
+}
+
   return (
     <div className="bg-slate-900 rounded-2xl shadow-xl flex flex-col h-full border border-slate-800 overflow-hidden text-slate-200">
       {/* Top Toolbar */}
@@ -147,7 +158,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 text-slate-400 hover:text-blue-300 hover:bg-slate-800 rounded-xl transition-colors hidden sm:block"
-            title="Original-PDF in neuem Fenster öffnen"
+            title="Original-PDF / Google Drive in neuem Fenster öffnen"
           >
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
@@ -172,9 +183,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           ) : (
             <div className="w-full bg-white rounded-lg shadow-2xl overflow-hidden min-h-[700px] border border-slate-700">
               <iframe
-                src={`${exam.pdfUrl}#page=${currentPage}`}
+                src={formatPdfEmbedUrl(exam.pdfUrl, currentPage)}
                 title="IHK Prüfungsheft PDF"
                 className="w-full h-[750px] border-0"
+                allow="autoplay"
               />
             </div>
           )}
