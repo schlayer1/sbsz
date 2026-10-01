@@ -85,7 +85,9 @@ export function initFirebase(): void {
         apiKey: envApiKey,
         authDomain: `${envProjectId}.firebaseapp.com`,
         projectId: envProjectId,
-        storageBucket: `${envProjectId}.appspot.com`,
+        storageBucket:
+          (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET ||
+          `${envProjectId}.firebasestorage.app`,
         messagingSenderId: (import.meta as any).env?.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
         appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '',
       };
