@@ -52,8 +52,8 @@ import {
   pairExamFiles,
   getActiveDriveFolderId,
   saveActiveDriveFolderId,
-  getActiveDriveApiKey,
-  saveActiveDriveApiKey,
+  getActiveAppsScriptUrl,
+  saveActiveAppsScriptUrl,
   DiscoveredExamBundle,
 } from '../services/googleDrive';
 
@@ -101,8 +101,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [configSavedNotice, setConfigSavedNotice] = useState(false);
 
   // Google Drive Sync States
-  const [driveFolderId, setDriveFolderId] = useState('');
-  const [driveApiKey, setDriveApiKey] = useState('');
+  const [driveFolderId, setDriveFolderId] = useState('13BZyRvoznEnBV7kXiLXUhyFOfxcYRXCA');
+  const [appsScriptUrl, setAppsScriptUrl] = useState(
+    'https://script.google.com/macros/s/AKfycbyO_EsvmizfJh-0AtDfWgNqWqgcsBZeKwtZa8vW1FdlcC7WH16JSbrkTj9pD00K-GHOxA/exec'
+  );
   const [isSyncingDrive, setIsSyncingDrive] = useState(false);
   const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
   const [driveSyncSuccess, setDriveSyncSuccess] = useState<string | null>(null);
@@ -128,7 +130,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       if (activeGeminiKey) setGeminiKeyInput(activeGeminiKey);
 
       setDriveFolderId(getActiveDriveFolderId());
-      setDriveApiKey(getActiveDriveApiKey());
+      setAppsScriptUrl(getActiveAppsScriptUrl());
     } catch (err) {
       console.error('Fehler beim Laden der Dashboard-Daten:', err);
     } finally {
@@ -244,9 +246,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setDriveSyncSuccess(null);
     try {
       saveActiveDriveFolderId(driveFolderId);
-      saveActiveDriveApiKey(driveApiKey);
+      saveActiveAppsScriptUrl(appsScriptUrl);
 
-      const files = await fetchDriveFolderFiles(driveFolderId, driveApiKey);
+      const files = await fetchDriveFolderFiles(appsScriptUrl, driveFolderId);
       const bundles = pairExamFiles(files);
       setDiscoveredBundles(bundles);
 
@@ -254,7 +256,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         setDriveSyncSuccess('Ordner erfolgreich gescannt: Keine neuen PDF-Prüfungsbögen gefunden.');
       } else {
         setDriveSyncSuccess(
-          `Erfolgreich synchronisiert! ${bundles.length} Prüfungsheft(e) im Google Drive Ordner entdeckt.`
+          `Erfolgreich synchronisiert! ${bundles.length} Prüfungsheft-Bündel mit Lösungen im Google Drive Ordner entdeckt.`
         );
       }
     } catch (err: any) {
@@ -316,8 +318,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     if (driveFolderId.trim()) {
       saveActiveDriveFolderId(driveFolderId);
     }
-    if (driveApiKey.trim()) {
-      saveActiveDriveApiKey(driveApiKey);
+    if (appsScriptUrl.trim()) {
+      saveActiveAppsScriptUrl(appsScriptUrl);
     }
     setConfigSavedNotice(true);
     setTimeout(() => setConfigSavedNotice(false), 3000);
@@ -1091,7 +1093,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <label className="block font-bold text-slate-700 mb-1">Google Drive Ordner-ID (Auto-Sync)</label>
                 <input
                   type="text"
-                  placeholder="z. B. 1AbCdEfGhIjKlMnOpQrStUvWxYz..."
+                  placeholder="13BZyRvoznEnBV7kXiLXUhyFOfxcYRXCA"
                   value={driveFolderId}
                   onChange={(e) => setDriveFolderId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
@@ -1099,13 +1101,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Google Cloud / Drive API Key</label>
+                <label className="block font-bold text-slate-700 mb-1">Google Apps Script Web-App URL</label>
                 <input
-                  type="password"
-                  placeholder="AIzaSy... (oder leer lassen, nutzt Firebase Key)"
-                  value={driveApiKey}
-                  onChange={(e) => setDriveApiKey(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
+                  type="text"
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  value={appsScriptUrl}
+                  onChange={(e) => setAppsScriptUrl(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono text-[11px]"
                 />
               </div>
             </div>
