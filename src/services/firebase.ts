@@ -350,10 +350,14 @@ export async function getAllStudents(): Promise<StudentProfile[]> {
     const snap = await getDocs(collection(db, STUDENTS_COLLECTION));
     const cloudStudents: StudentProfile[] = [];
     snap.forEach((docSnap) => cloudStudents.push(docSnap.data() as StudentProfile));
-    if (cloudStudents.length > 0) {
-      localStorage.setItem(LOCAL_STUDENTS_CACHE_KEY, JSON.stringify(cloudStudents));
-      return cloudStudents;
-    }
+
+    const map = new Map<string, StudentProfile>();
+    localList.forEach((s) => map.set(s.id, s));
+    cloudStudents.forEach((s) => map.set(s.id, s));
+
+    const merged = Array.from(map.values()).sort((a, b) => (b.lastLoginAt || 0) - (a.lastLoginAt || 0));
+    localStorage.setItem(LOCAL_STUDENTS_CACHE_KEY, JSON.stringify(merged));
+    return merged;
   } catch (err) {
     console.warn('[Firebase] Fehler beim Laden der Schüler:', err);
   }
@@ -478,10 +482,15 @@ export async function getAllSubmissions(): Promise<ExamSubmission[]> {
     const snap = await getDocs(collection(db, SUBMISSIONS_COLLECTION));
     const cloudSubs: ExamSubmission[] = [];
     snap.forEach((docSnap) => cloudSubs.push(docSnap.data() as ExamSubmission));
-    if (cloudSubs.length > 0) {
-      localStorage.setItem(LOCAL_SUBMISSIONS_CACHE_KEY, JSON.stringify(cloudSubs));
-      return cloudSubs;
-    }
+
+    // Merge: Firestore ist führend, aber lokale neue Einträge nicht verlieren
+    const map = new Map<string, ExamSubmission>();
+    localList.forEach((s) => map.set(s.id, s));
+    cloudSubs.forEach((s) => map.set(s.id, s));
+
+    const merged = Array.from(map.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    localStorage.setItem(LOCAL_SUBMISSIONS_CACHE_KEY, JSON.stringify(merged));
+    return merged;
   } catch (err) {
     console.warn('[Firebase] Fehler beim Laden aller Abgaben:', err);
   }

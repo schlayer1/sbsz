@@ -773,6 +773,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     {filteredSubmissions.map((sub) => {
                       const score = sub.score;
                       const hasFeedback = sub.feedback && sub.feedback.isSent;
+                      const matchedStudent = students.find(
+                        (st) =>
+                          st.id === sub.studentId ||
+                          st.fullName === sub.studentName ||
+                          st.studentCode === sub.studentCode
+                      );
+                      const displayCode = sub.studentCode || matchedStudent?.studentCode || '';
                       const isSelected = selectedSubIds.includes(sub.id);
 
                       return (
@@ -796,21 +803,21 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             <div className="flex items-center gap-1.5 mt-1">
                               <div className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-900 px-2 py-0.5 rounded-md font-mono text-xs font-bold">
                                 <Key className="w-3 h-3 text-amber-700" />
-                                <span>Login: {sub.studentCode || '—'}</span>
+                                <span>Login: {displayCode || '—'}</span>
                               </div>
-                              {sub.studentCode && (
+                              {displayCode && (
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigator.clipboard.writeText(sub.studentCode || '');
-                                    setCopiedCode(sub.studentCode);
+                                    navigator.clipboard.writeText(displayCode);
+                                    setCopiedCode(displayCode);
                                     setTimeout(() => setCopiedCode(null), 2500);
                                   }}
                                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-sbsz-blue hover:bg-blue-50 px-1.5 py-0.5 rounded transition"
                                   title="Schüler-Kürzel kopieren (um es dem Schüler im Unterricht mitzuteilen)"
                                 >
-                                  {copiedCode === sub.studentCode ? (
+                                  {copiedCode === displayCode ? (
                                     <>
                                       <Check className="w-3 h-3 text-emerald-600" />
                                       <span className="text-emerald-700 font-bold">Kopiert!</span>
@@ -1610,7 +1617,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       )}
       {/* Solution Key Editor Modal */}
       {editingSolutionsExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-sbsz-navy/70 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-sbsz-navy/70 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
             {/* Modal Header */}
             <div className="bg-sbsz-darkBlue text-white p-4 sm:p-5 flex items-center justify-between shrink-0">

@@ -54,6 +54,8 @@ export function App() {
     const session = getCurrentStudentSession();
     if (session) {
       setCurrentStudent(session);
+    } else {
+      setShowStudentModal(true);
     }
 
     // Load available exams & student list
@@ -292,7 +294,13 @@ export function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col">
+      <main
+        className={`flex-1 flex flex-col transition-all duration-300 ${
+          !currentStudent && !isTeacherMode
+            ? 'filter blur-md pointer-events-none select-none opacity-40'
+            : ''
+        }`}
+      >
         {/* ========================================================= */}
         {/* VIEW 1: LEHRER DASHBOARD */}
         {/* ========================================================= */}
@@ -471,7 +479,8 @@ export function App() {
 
       {/* Auth Modals */}
       <StudentAuthModal
-        isOpen={showStudentModal}
+        isOpen={showStudentModal || (!currentStudent && !isTeacherMode)}
+        preventClose={!currentStudent && !isTeacherMode}
         onClose={() => setShowStudentModal(false)}
         onLoginWithCode={handleLoginWithCode}
         onRegisterStudent={handleRegisterStudent}
@@ -484,6 +493,7 @@ export function App() {
         onSuccess={() => {
           setIsTeacherMode(true);
           setActiveView('teacher');
+          setShowStudentModal(false);
         }}
       />
     </div>
