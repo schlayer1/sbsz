@@ -23,6 +23,9 @@ import {
   FolderSync,
   FolderOpen,
   Trash2,
+  Pencil,
+  Edit2,
+  X,
 } from 'lucide-react';
 import {
   ExamDefinition,
@@ -109,6 +112,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
   const [driveSyncSuccess, setDriveSyncSuccess] = useState<string | null>(null);
   const [discoveredBundles, setDiscoveredBundles] = useState<DiscoveredExamBundle[]>([]);
+
+  // Exam Edit / Rename States
+  const [editingExamId, setEditingExamId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editCode, setEditCode] = useState('');
+  const [editSubtitle, setEditSubtitle] = useState('');
 
   // Load all data
   const loadData = async () => {
@@ -220,6 +229,33 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     };
     await saveExam(updatedExam);
     setExams((prev) => prev.map((e) => (e.id === exam.id ? updatedExam : e)));
+  };
+
+  const handleStartRenameExam = (exam: ExamDefinition) => {
+    setEditingExamId(exam.id);
+    setEditTitle(exam.title);
+    setEditCode(exam.examCode);
+    setEditSubtitle(exam.subtitle);
+  };
+
+  const handleCancelRename = () => {
+    setEditingExamId(null);
+  };
+
+  const handleSaveExamRename = async (exam: ExamDefinition) => {
+    if (!editTitle.trim()) {
+      alert('Der Titel darf nicht leer sein.');
+      return;
+    }
+    const updatedExam: ExamDefinition = {
+      ...exam,
+      title: editTitle.trim(),
+      examCode: editCode.trim() || exam.examCode,
+      subtitle: editSubtitle.trim() || exam.subtitle,
+    };
+    await saveExam(updatedExam);
+    setExams((prev) => prev.map((e) => (e.id === exam.id ? updatedExam : e)));
+    setEditingExamId(null);
   };
 
   const handleDeleteExam = async (examId: string) => {
@@ -771,8 +807,84 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     </button>
                   </div>
 
-                  <h4 className="font-extrabold text-base text-slate-900 mt-2">{exam.title}</h4>
-                  <p className="text-xs text-slate-600 mt-0.5">{exam.subtitle}</p>
+                  {/* Title & Subtitle or Edit Form */}
+                  {editingExamId === exam.id ? (
+                    <div className="mt-3 bg-blue-50/70 p-3.5 rounded-xl border border-blue-200 space-y-2.5">
+                      <div className="text-xs font-bold text-blue-900 flex items-center justify-between">
+                        <span>Prüfungsbogen umbenennen:</span>
+                        <button
+                          onClick={handleCancelRename}
+                          className="text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Titel:</label>
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          placeholder="z. B. Abschlussprüfung Teil 2: Fertigungstechnik"
+                          className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sbsz-blue bg-white"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-0.5">IHK-Kürzel:</label>
+                          <input
+                            type="text"
+                            value={editCode}
+                            onChange={(e) => setEditCode(e.target.value)}
+                            placeholder="z. B. S25 4060"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sbsz-blue bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-700 mb-0.5">Untertitel:</label>
+                          <input
+                            type="text"
+                            value={editSubtitle}
+                            onChange={(e) => setEditSubtitle(e.target.value)}
+                            placeholder="z. B. Sommer 2025 (Berufs-Nr. 4060)"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-sbsz-blue bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          onClick={handleCancelRename}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                        >
+                          Abbrechen
+                        </button>
+                        <button
+                          onClick={() => handleSaveExamRename(exam)}
+                          className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-sbsz-blue hover:bg-sbsz-darkBlue text-white shadow-sm transition-colors flex items-center gap-1"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Speichern</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-2 mt-2">
+                        <h4 className="font-extrabold text-base text-slate-900 leading-snug">{exam.title}</h4>
+                        <button
+                          onClick={() => handleStartRenameExam(exam)}
+                          className="p-1 text-slate-400 hover:text-sbsz-blue hover:bg-blue-50 rounded-lg transition-colors shrink-0"
+                          title="Titel & Bezeichnung anpassen"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-0.5">{exam.subtitle}</p>
+                    </>
+                  )}
 
                   <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1 text-slate-600">
                     <div>
@@ -822,6 +934,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   >
                     <Eye className="w-3.5 h-3.5" />
                     <span>In Schüleransicht testen</span>
+                  </button>
+                  <button
+                    onClick={() => handleStartRenameExam(exam)}
+                    className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors"
+                    title="Bezeichnung umbenennen"
+                  >
+                    <Edit2 className="w-4 h-4" />
                   </button>
                   <a
                     href={exam.pdfUrl}
