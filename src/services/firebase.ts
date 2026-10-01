@@ -435,6 +435,41 @@ export async function saveExamSubmission(submission: ExamSubmission): Promise<vo
   }
 }
 
+export async function deleteExamSubmission(submissionId: string): Promise<void> {
+  const local = getLocalSubmissions().filter((s) => s.id !== submissionId);
+  localStorage.setItem(LOCAL_SUBMISSIONS_CACHE_KEY, JSON.stringify(local));
+
+  if (db) {
+    try {
+      const docRef = doc(db, SUBMISSIONS_COLLECTION, submissionId);
+      await deleteDoc(docRef);
+      console.log(`[Firebase] Abgabe ${submissionId} erfolgreich gelöscht.`);
+    } catch (err) {
+      console.warn('[Firebase] Konnte Abgabe nicht aus Firestore löschen:', err);
+    }
+  }
+}
+
+export async function deleteMultipleExamSubmissions(submissionIds: string[]): Promise<void> {
+  const idSet = new Set(submissionIds);
+  const local = getLocalSubmissions().filter((s) => !idSet.has(s.id));
+  localStorage.setItem(LOCAL_SUBMISSIONS_CACHE_KEY, JSON.stringify(local));
+
+  if (db) {
+    const firestore = db;
+    try {
+      const deletePromises = submissionIds.map((id) => {
+        const docRef = doc(firestore, SUBMISSIONS_COLLECTION, id);
+        return deleteDoc(docRef);
+      });
+      await Promise.all(deletePromises);
+      console.log(`[Firebase] ${submissionIds.length} Abgaben erfolgreich gelöscht.`);
+    } catch (err) {
+      console.warn('[Firebase] Konnte Abgaben nicht aus Firestore löschen:', err);
+    }
+  }
+}
+
 export async function getAllSubmissions(): Promise<ExamSubmission[]> {
   const localList = getLocalSubmissions();
   if (!db) return localList;

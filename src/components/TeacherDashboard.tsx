@@ -43,6 +43,8 @@ import {
   deleteExam,
   getAllStudents,
   getAllSubmissions,
+  deleteExamSubmission,
+  deleteMultipleExamSubmissions,
   sendFeedbackToStudent,
   getCustomFirebaseConfig,
   saveCustomFirebaseConfig,
@@ -130,6 +132,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   // Solution Key Editor States
   const [editingSolutionsExam, setEditingSolutionsExam] = useState<ExamDefinition | null>(null);
   const [tempSolutions, setTempSolutions] = useState<Record<number, number>>({});
+
+  // Submissions Selection for Bulk Delete
+  const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
 
   // Load all data
   const loadData = async () => {
@@ -313,6 +318,45 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     if (!window.confirm('Möchtest du diesen Prüfungsbogen wirklich unwiderruflich löschen?')) return;
     await deleteExam(examId);
     setExams((prev) => prev.filter((e) => e.id !== examId));
+  };
+
+  const handleDeleteSubmission = async (sub: ExamSubmission) => {
+    const confirmText = `Möchtest du die Abgabe von ${sub.studentName} (${sub.className}) wirklich unwiderruflich löschen?`;
+    if (!window.confirm(confirmText)) return;
+
+    await deleteExamSubmission(sub.id);
+    setSubmissions((prev) => prev.filter((s) => s.id !== sub.id));
+    setSelectedSubIds((prev) => prev.filter((id) => id !== sub.id));
+    if (selectedSubmission?.id === sub.id) {
+      setSelectedSubmission(null);
+    }
+  };
+
+  const handleBulkDeleteSubmissions = async () => {
+    if (selectedSubIds.length === 0) return;
+    const confirmText = `Möchtest du wirklich alle ${selectedSubIds.length} ausgewählten Schülerabgaben unwiderruflich löschen?`;
+    if (!window.confirm(confirmText)) return;
+
+    await deleteMultipleExamSubmissions(selectedSubIds);
+    setSubmissions((prev) => prev.filter((s) => !selectedSubIds.includes(s.id)));
+    if (selectedSubmission && selectedSubIds.includes(selectedSubmission.id)) {
+      setSelectedSubmission(null);
+    }
+    setSelectedSubIds([]);
+  };
+
+  const handleToggleSelectAllSubmissions = () => {
+    if (selectedSubIds.length === filteredSubmissions.length) {
+      setSelectedSubIds([]);
+    } else {
+      setSelectedSubIds(filteredSubmissions.map((s) => s.id));
+    }
+  };
+
+  const handleToggleSelectSubmission = (subId: string) => {
+    setSelectedSubIds((prev) =>
+      prev.includes(subId) ? prev.filter((id) => id !== subId) : [...prev, subId]
+    );
   };
 
   const handleToggleClassAssignment = async (exam: ExamDefinition, cls: string) => {
@@ -589,10 +633,30 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
           {/* Submissions Table */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
-                Eingereichte Arbeiten & Bearbeitungsstatus ({filteredSubmissions.length})
-              </h3>
+            <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                  Eingereichte Arbeiten & Bearbeitungsstatus ({filteredSubmissions.length})
+                </h3>
+                {selectedSubIds.length > 0 && (
+                  <span className="bg-rose-100 text-rose-800 text-xs font-bold px-2 py-0.5 rounded-full">
+                    {selectedSubIds.length} ausgewählt
+                  </span>
+                )}
+              </div>
+
+              {/* Bulk Delete Button */}
+              {selectedSubIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleBulkDeleteSubmissions}
+                  className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-colors animate-fade-in"
+                  title="Ausgewählte Schülerarbeiten löschen"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{selectedSubIds.length} Abgaben unwiderruflich löschen</span>
+                </button>
+              )}
             </div>
 
             {filteredSubmissions.length === 0 ? (
@@ -608,6 +672,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-b border-slate-200">
                     <tr>
+                      <th className="p-3 sm:px-4 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            filteredSubmissions.length > 0 &&
+                            selectedSubIds.length === filteredSubmissions.length
+                          }
+                          onChange={handleToggleSelectAllSubmissions}
+                          className="rounded border-slate-300 text-sbsz-blue focus:ring-sbsz-blue cursor-pointer"
+                          title="Alle sichtbaren Abgaben auswählen"
+                        />
+                      </th>
                       <th className="p-3 sm:px-4">Schüler & Kürzel</th>
                       <th className="p-3 sm:px-4">Klasse</th>
                       <th className="p-3 sm:px-4">Status</th>
@@ -621,9 +697,24 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     {filteredSubmissions.map((sub) => {
                       const score = sub.score;
                       const hasFeedback = sub.feedback && sub.feedback.isSent;
+                      const isSelected = selectedSubIds.includes(sub.id);
 
                       return (
-                        <tr key={sub.id} className="hover:bg-slate-50/70 transition-colors">
+                        <tr
+                          key={sub.id}
+                          className={`transition-colors ${
+                            isSelected ? 'bg-rose-50/50' : 'hover:bg-slate-50/70'
+                          }`}
+                        >
+                          <td className="p-3 sm:px-4 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectSubmission(sub.id)}
+                              className="rounded border-slate-300 text-sbsz-blue focus:ring-sbsz-blue cursor-pointer"
+                              title="Diese Abgabe auswählen"
+                            />
+                          </td>
                           <td className="p-3 sm:px-4">
                             <div className="font-bold text-slate-900">{sub.studentName}</div>
                             <div className="flex items-center gap-1.5 mt-1">
@@ -704,7 +795,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                               <span className="text-slate-400 text-xs">Ausstehend</span>
                             )}
                           </td>
-                          <td className="p-3 sm:px-4 text-right space-x-1.5">
+                          <td className="p-3 sm:px-4 text-right space-x-1.5 whitespace-nowrap">
                             <button
                               onClick={() => setSelectedSubmission(sub)}
                               className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors"
@@ -721,6 +812,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                               title="KI-Feedback erstellen"
                             >
                               KI-Coach
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSubmission(sub)}
+                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 transition-colors inline-flex items-center"
+                              title="Abgabe unwiderruflich löschen"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </td>
                         </tr>
@@ -1389,10 +1487,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               )}
             </div>
 
-            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end shrink-0">
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => handleDeleteSubmission(selectedSubmission)}
+                className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 border border-rose-200"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                <span>Abgabe löschen</span>
+              </button>
               <button
                 onClick={() => setSelectedSubmission(null)}
-                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs"
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs transition-colors"
               >
                 Schließen
               </button>
