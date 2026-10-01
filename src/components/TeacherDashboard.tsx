@@ -1,0 +1,988 @@
+import React, { useState, useEffect } from 'react';
+import {
+  FileText,
+  Users,
+  BarChart3,
+  Sparkles,
+  Cloud,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  Upload,
+  Plus,
+  Send,
+  Eye,
+  KeyRound,
+  ShieldCheck,
+  RefreshCw,
+  Search,
+  ExternalLink,
+  Copy,
+  Check,
+  Database,
+  Lock,
+  Layers,
+  Award,
+} from 'lucide-react';
+import {
+  ExamDefinition,
+  StudentProfile,
+  ExamSubmission,
+  FirebaseCustomConfig,
+  TeacherFeedback,
+} from '../types/exam';
+import {
+  getExams,
+  saveExam,
+  getAllStudents,
+  getAllSubmissions,
+  sendFeedbackToStudent,
+  getCustomFirebaseConfig,
+  saveCustomFirebaseConfig,
+  db,
+  storage,
+} from '../services/firebase';
+import { uploadExamPdf } from '../services/storage';
+import {
+  generateStudentFeedbackWithAI,
+  getActiveGeminiApiKey,
+  saveTeacherGeminiApiKey,
+} from '../services/gemini';
+
+interface TeacherDashboardProps {
+  onSelectExamForPreview: (exam: ExamDefinition) => void;
+  onClose: () => void;
+}
+
+export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
+  onSelectExamForPreview,
+  onClose,
+}) => {
+  const [activeTab, setActiveTab] = useState<'exams' | 'students' | 'analytics' | 'gemini' | 'cloud'>(
+    'students'
+  );
+
+  // Data states
+  const [exams, setExams] = useState<ExamDefinition[]>([]);
+  const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [submissions, setSubmissions] = useState<ExamSubmission[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Filter & Search
+  const [selectedClass, setSelectedClass] = useState<string>('Alle');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Selected Student for Detail Modal & Gemini
+  const [selectedSubmission, setSelectedSubmission] = useState<ExamSubmission | null>(null);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [aiFeedbackDraft, setAiFeedbackDraft] = useState<string>('');
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [feedbackSentSuccess, setFeedbackSentSuccess] = useState(false);
+
+  // New Exam Modal
+  const [showNewExamModal, setShowNewExamModal] = useState(false);
+  const [newExamTitle, setNewExamTitle] = useState('');
+  const [newExamCode, setNewExamCode] = useState('');
+  const [newExamFile, setNewExamFile] = useState<File | null>(null);
+  const [newExamClasses, setNewExamClasses] = useState('Alle, ZM22A, ZM22B, ZM23');
+
+  // Firebase Config Form
+  const [fbConfig, setFbConfig] = useState<FirebaseCustomConfig>({
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: '',
+  });
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [configSavedNotice, setConfigSavedNotice] = useState(false);
+
+  // Load all data
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [loadedExams, loadedStudents, loadedSubs] = await Promise.all([
+        getExams(),
+        getAllStudents(),
+        getAllSubmissions(),
+      ]);
+      setExams(loadedExams);
+      setStudents(loadedStudents);
+      setSubmissions(loadedSubs);
+
+      // Load config if present
+      const savedConfig = getCustomFirebaseConfig();
+      if (savedConfig) setFbConfig(savedConfig);
+
+      const activeGeminiKey = getActiveGeminiApiKey();
+      if (activeGeminiKey) setGeminiKeyInput(activeGeminiKey);
+    } catch (err) {
+      console.error('Fehler beim Laden der Dashboard-Daten:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // Filtered submissions
+  const filteredSubmissions = submissions.filter((sub) => {
+    const matchesClass = selectedClass === 'Alle' || sub.className === selectedClass;
+    const matchesSearch =
+      searchQuery === '' ||
+      sub.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      sub.className.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesClass && matchesSearch;
+  });
+
+  // Extract unique classes
+  const allClasses = Array.from(
+    new Set(['Alle', ...submissions.map((s) => s.className), ...students.map((s) => s.className)])
+  ).filter(Boolean);
+
+  // Handle AI Feedback Generation
+  const handleGenerateFeedback = async (sub: ExamSubmission) => {
+    setSelectedSubmission(sub);
+    setIsGeneratingAi(true);
+    setAiError(null);
+    setFeedbackSentSuccess(false);
+
+    const exam = exams.find((e) => e.id === sub.examId) || exams[0];
+    if (!exam || !sub.score) {
+      setAiError('Für diesen Schüler liegt noch kein auswertbares Ergebnis vor.');
+      setIsGeneratingAi(false);
+      return;
+    }
+
+    try {
+      const feedback = await generateStudentFeedbackWithAI(
+        sub.studentName,
+        sub.className,
+        exam,
+        sub.score,
+        sub.id,
+        sub.studentId,
+        'Fachlehrer SBSZ'
+      );
+      setAiFeedbackDraft(feedback.text);
+    } catch (err: any) {
+      setAiError(err?.message || 'Fehler beim Generieren des Feedbacks.');
+    } finally {
+      setIsGeneratingAi(false);
+    }
+  };
+
+  const handleSendFeedback = async () => {
+    if (!selectedSubmission || !aiFeedbackDraft) return;
+
+    const teacherFeedback: TeacherFeedback = {
+      id: `fb_${Date.now()}`,
+      submissionId: selectedSubmission.id,
+      studentId: selectedSubmission.studentId,
+      examId: selectedSubmission.examId,
+      text: aiFeedbackDraft,
+      strengths: [],
+      weaknesses: [],
+      learningTips: ['Tabellenbuch Metall', 'PAL Leitfaden CNC'],
+      references: ['DIN 4984', 'G54 Werkstück-Nullpunkt'],
+      generatedAt: Date.now(),
+      sentAt: Date.now(),
+      isSent: true,
+      teacherName: 'Fachlehrer Metalltechnik',
+    };
+
+    await sendFeedbackToStudent(selectedSubmission.id, teacherFeedback);
+    setFeedbackSentSuccess(true);
+    await loadData();
+  };
+
+  // Toggle Exam Class Assignment
+  const handleToggleClassAssignment = async (exam: ExamDefinition, cls: string) => {
+    let updatedClasses = [...exam.assignedClasses];
+    if (updatedClasses.includes(cls)) {
+      updatedClasses = updatedClasses.filter((c) => c !== cls);
+    } else {
+      updatedClasses.push(cls);
+    }
+    const updatedExam = { ...exam, assignedClasses: updatedClasses };
+    await saveExam(updatedExam);
+    setExams((prev) => prev.map((e) => (e.id === exam.id ? updatedExam : e)));
+  };
+
+  // Save Config
+  const handleSaveConfig = () => {
+    if (fbConfig.projectId && fbConfig.apiKey) {
+      saveCustomFirebaseConfig(fbConfig);
+    }
+    if (geminiKeyInput.trim()) {
+      saveTeacherGeminiApiKey(geminiKeyInput.trim());
+    }
+    setConfigSavedNotice(true);
+    setTimeout(() => setConfigSavedNotice(false), 3000);
+  };
+
+  // Compute Question Heatmap / Analytics
+  const computeQuestionAnalytics = () => {
+    const totalSubsWithScore = filteredSubmissions.filter((s) => s.score !== null);
+    const count = totalSubsWithScore.length;
+    if (count === 0) return [];
+
+    const stats: {
+      questionNum: number;
+      topic: string;
+      errorRate: number;
+      correctRate: number;
+      deselectedRate: number;
+    }[] = [];
+
+    const currentExam = exams[0];
+    const totalQ = currentExam?.totalQuestions || 28;
+
+    for (let q = 1; q <= totalQ; q++) {
+      let errors = 0;
+      let corrects = 0;
+      let deselected = 0;
+
+      totalSubsWithScore.forEach((sub) => {
+        const evalData = sub.score?.questionEvaluations[q];
+        if (evalData) {
+          if (evalData.isDeselected) deselected++;
+          else if (evalData.isCorrect) corrects++;
+          else errors++;
+        }
+      });
+
+      const qDef = currentExam?.questions.find((item) => item.number === q);
+
+      stats.push({
+        questionNum: q,
+        topic: qDef?.topic || `Aufgabe ${q}`,
+        errorRate: Math.round((errors / count) * 100),
+        correctRate: Math.round((corrects / count) * 100),
+        deselectedRate: Math.round((deselected / count) * 100),
+      });
+    }
+
+    return stats.sort((a, b) => b.errorRate - a.errorRate);
+  };
+
+  const questionAnalytics = computeQuestionAnalytics();
+
+  return (
+    <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-5 sm:py-6 space-y-6 animate-fade-in">
+      {/* Dashboard Top Header */}
+      <div className="bg-slate-900 text-white p-5 sm:p-6 rounded-2xl shadow-xl border border-slate-800 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-400 text-amber-400 flex items-center justify-center font-black">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight">
+                Lehrer-Dashboard & Prüfungsverwaltung
+              </h1>
+              <span className="bg-amber-400/20 text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-400/30">
+                Kollegium SBSZ
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+              Zentrale Verwaltung aller IHK-Prüfungsbögen, Live-Fortschritte, Fehleranalysen und KI-Feedback
+            </p>
+          </div>
+        </div>
+
+        {/* Database & Storage Status indicator */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
+            <span
+              className={`w-2 h-2 rounded-full ${db ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}
+            />
+            <span className="text-slate-300 font-medium">
+              {db ? 'Firebase Cloud aktiv' : 'Lokaler Cache aktiv'}
+            </span>
+          </div>
+
+          <button
+            onClick={loadData}
+            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-colors"
+            title="Daten aktualisieren"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs Navigation */}
+      <div className="flex items-center gap-2 border-b border-slate-200 overflow-x-auto pb-1 scrollbar-none touch-pan-x">
+        {[
+          { id: 'students', label: 'Schüler & Abgaben', icon: Users, count: submissions.length },
+          { id: 'exams', label: 'Prüfungsbögen verwalten', icon: FileText, count: exams.length },
+          { id: 'analytics', label: 'Klassen-Fehleranalyse', icon: BarChart3 },
+          { id: 'gemini', label: 'KI-Feedback (Gemini)', icon: Sparkles },
+          { id: 'cloud', label: 'Cloud-Speicher & Setup', icon: Cloud },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
+                isActive
+                  ? 'bg-ihk-blue text-white shadow-md'
+                  : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+              {tab.count !== undefined && (
+                <span
+                  className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
+                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ============================================================== */}
+      {/* TAB 1: SCHÜLER & ABGABEN */}
+      {/* ============================================================== */}
+      {activeTab === 'students' && (
+        <div className="space-y-4">
+          {/* Controls Strip: Class Filter & Search */}
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Klasse:</span>
+              {allClasses.map((cls) => (
+                <button
+                  key={cls}
+                  onClick={() => setSelectedClass(cls)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    selectedClass === cls
+                      ? 'bg-blue-600 text-white shadow'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {cls}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Schüler suchen..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Submissions Table */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-extrabold text-slate-900 text-sm sm:text-base">
+                Eingereichte Arbeiten & Bearbeitungsstatus ({filteredSubmissions.length})
+              </h3>
+            </div>
+
+            {filteredSubmissions.length === 0 ? (
+              <div className="p-12 text-center text-slate-500 space-y-2">
+                <Users className="w-10 h-10 text-slate-300 mx-auto" />
+                <p className="font-semibold text-slate-700">Noch keine Abgaben für diese Auswahl vorhanden.</p>
+                <p className="text-xs text-slate-400">
+                  Sobald Schüler über das Portal ihre Bögen bearbeiten, erscheinen ihre Fortschritte hier in Echtzeit.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3 sm:px-4">Schüler</th>
+                      <th className="p-3 sm:px-4">Klasse</th>
+                      <th className="p-3 sm:px-4">Status</th>
+                      <th className="p-3 sm:px-4">Punkte</th>
+                      <th className="p-3 sm:px-4">Note</th>
+                      <th className="p-3 sm:px-4">KI-Feedback</th>
+                      <th className="p-3 sm:px-4 text-right">Aktionen</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredSubmissions.map((sub) => {
+                      const score = sub.score;
+                      const hasFeedback = sub.feedback && sub.feedback.isSent;
+
+                      return (
+                        <tr key={sub.id} className="hover:bg-slate-50/70 transition-colors">
+                          <td className="p-3 sm:px-4 font-bold text-slate-900">
+                            {sub.studentName}
+                          </td>
+                          <td className="p-3 sm:px-4">
+                            <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-700">
+                              {sub.className}
+                            </span>
+                          </td>
+                          <td className="p-3 sm:px-4">
+                            {sub.status === 'abgegeben' ? (
+                              <span className="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Abgegeben
+                              </span>
+                            ) : (
+                              <span className="bg-amber-100 text-amber-800 text-xs px-2.5 py-0.5 rounded-full font-bold inline-flex items-center gap-1">
+                                In Bearbeitung
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 sm:px-4 font-bold font-mono">
+                            {score ? `${score.totalPoints} / ${score.maxPoints}` : '—'}
+                          </td>
+                          <td className="p-3 sm:px-4 font-bold">
+                            {score ? (
+                              <span
+                                className={`px-2 py-0.5 rounded text-xs font-bold ${
+                                  score.grade <= 3
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : score.grade === 4
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-rose-100 text-rose-800'
+                                }`}
+                              >
+                                Note {score.grade} ({score.percentage}%)
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td className="p-3 sm:px-4">
+                            {hasFeedback ? (
+                              <span className="text-emerald-700 text-xs font-semibold flex items-center gap-1">
+                                <Check className="w-3.5 h-3.5" /> Versendet
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-xs">Ausstehend</span>
+                            )}
+                          </td>
+                          <td className="p-3 sm:px-4 text-right space-x-1.5">
+                            <button
+                              onClick={() => setSelectedSubmission(sub)}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors"
+                              title="Bogen ansehen"
+                            >
+                              Details
+                            </button>
+                            <button
+                              onClick={() => {
+                                setActiveTab('gemini');
+                                handleGenerateFeedback(sub);
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-colors"
+                              title="KI-Feedback erstellen"
+                            >
+                              KI-Coach
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 2: PRÜFUNGSBÖGEN VERWALTEN */}
+      {/* ============================================================== */}
+      {activeTab === 'exams' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-extrabold text-slate-900 text-base">
+              Hinterlegte IHK-Prüfungshefte & Lösungsschlüssel
+            </h3>
+            <button
+              onClick={() => setShowNewExamModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Neuen Prüfungsbogen anlegen</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {exams.map((exam) => (
+              <div
+                key={exam.id}
+                className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4 flex flex-col justify-between"
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="bg-blue-100 text-ihk-blue text-xs font-bold px-2.5 py-0.5 rounded-full">
+                      {exam.examCode}
+                    </span>
+                    <span
+                      className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                        exam.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {exam.isActive ? 'Aktiv geschaltet' : 'Gesperrt'}
+                    </span>
+                  </div>
+
+                  <h4 className="font-extrabold text-base text-slate-900 mt-2">{exam.title}</h4>
+                  <p className="text-xs text-slate-600 mt-0.5">{exam.subtitle}</p>
+
+                  <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1 text-slate-600">
+                    <div>
+                      <strong>Umfang:</strong> {exam.totalQuestions} Aufgaben ({exam.requiredQuestions} zu werten,{' '}
+                      {exam.maxDeselections} abwählbar)
+                    </div>
+                    <div>
+                      <strong>Nicht abwählbar:</strong> Aufgaben{' '}
+                      {exam.nonDeselectableQuestions?.join(', ')}
+                    </div>
+                    <div>
+                      <strong>Lösungsschlüssel:</strong> Vollständig hinterlegt (28 Aufgaben)
+                    </div>
+                  </div>
+                </div>
+
+                {/* Class Assignment Switches */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-2">
+                    Freigabe für Klassen:
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Alle', 'ZM22A', 'ZM22B', 'ZM23'].map((cls) => {
+                      const isAssigned = exam.assignedClasses.includes(cls);
+                      return (
+                        <button
+                          key={cls}
+                          onClick={() => handleToggleClassAssignment(exam, cls)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                            isAssigned
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                              : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {cls} {isAssigned ? '✓' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    onClick={() => onSelectExamForPreview(exam)}
+                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>In Schüleransicht testen</span>
+                  </button>
+                  <a
+                    href={exam.pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl"
+                    title="PDF im Browser öffnen"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 3: KLASSEN-FEHLERANALYSE (HEATMAP) */}
+      {/* ============================================================== */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-4">
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+            <h3 className="font-extrabold text-base text-slate-900">
+              Klassen-Fehlerquote pro Prüfungsaufgabe (Aufgaben 1 bis 28)
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Identifiziert automatisch die thematischen Schwachstellen des Jahrgangs für gezielten Förderunterricht.
+            </p>
+
+            {questionAnalytics.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                Noch keine Schülerabgaben zur Berechnung der Fehlerquoten vorhanden.
+              </div>
+            ) : (
+              <div className="mt-5 space-y-3">
+                {questionAnalytics.slice(0, 10).map((item) => (
+                  <div key={item.questionNum} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 font-bold text-slate-800">
+                        <span className="w-6 h-6 rounded-md bg-slate-900 text-white flex items-center justify-center text-[11px]">
+                          {item.questionNum}
+                        </span>
+                        <span>{item.topic}</span>
+                      </div>
+                      <span className="font-extrabold font-mono text-rose-600">
+                        {item.errorRate}% Fehler
+                      </span>
+                    </div>
+
+                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex">
+                      <div
+                        style={{ width: `${item.errorRate}%` }}
+                        className="bg-rose-500 h-full transition-all"
+                        title={`Fehler: ${item.errorRate}%`}
+                      />
+                      <div
+                        style={{ width: `${item.correctRate}%` }}
+                        className="bg-emerald-500 h-full transition-all"
+                        title={`Richtig: ${item.correctRate}%`}
+                      />
+                      <div
+                        style={{ width: `${item.deselectedRate}%` }}
+                        className="bg-amber-400 h-full transition-all"
+                        title={`Abgewählt: ${item.deselectedRate}%`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 4: KI-FEEDBACK (GEMINI) */}
+      {/* ============================================================== */}
+      {activeTab === 'gemini' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  Google Gemini Didaktik-Coach
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Erstellt personalisierte Stärken-, Schwächen- und Tabellenbuch-Empfehlungen
+                </p>
+              </div>
+            </div>
+
+            {selectedSubmission && (
+              <span className="bg-blue-100 text-ihk-blue text-xs font-bold px-3 py-1 rounded-xl">
+                Ausgewählt: {selectedSubmission.studentName} ({selectedSubmission.className})
+              </span>
+            )}
+          </div>
+
+          {/* Student selection dropdown if none selected */}
+          {!selectedSubmission ? (
+            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 text-center space-y-3">
+              <p className="text-sm font-semibold text-slate-700">
+                Wähle einen Schüler aus, um ein individuelles Feedback zu generieren:
+              </p>
+              <div className="flex flex-wrap justify-center gap-2 max-w-xl mx-auto">
+                {submissions.map((sub) => (
+                  <button
+                    key={sub.id}
+                    onClick={() => handleGenerateFeedback(sub)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-blue-50 text-slate-800 border border-slate-300 shadow-sm transition-all"
+                  >
+                    {sub.studentName} ({sub.className})
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {aiError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{aiError}</span>
+                </div>
+              )}
+
+              {feedbackSentSuccess && (
+                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-xl flex items-center gap-2">
+                  <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+                  <span>
+                    Feedback erfolgreich freigegeben! Der Schüler sieht es sofort in seinem Portal.
+                  </span>
+                </div>
+              )}
+
+              {isGeneratingAi ? (
+                <div className="p-8 text-center space-y-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <Sparkles className="w-8 h-8 text-indigo-600 mx-auto animate-pulse" />
+                  <p className="text-sm font-bold text-slate-800">
+                    Gemini analysiert die Fehler des Schülers...
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Kaskadenabfrage an gemini-flash-lite-latest / gemini-3-flash-preview läuft.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs text-slate-500">
+                    <span className="font-bold uppercase tracking-wider text-slate-700">
+                      Entwurf für {selectedSubmission.studentName}:
+                    </span>
+                    <span>Sie können den Text vor dem Versenden frei anpassen</span>
+                  </div>
+
+                  <textarea
+                    rows={12}
+                    value={aiFeedbackDraft}
+                    onChange={(e) => setAiFeedbackDraft(e.target.value)}
+                    placeholder="Das generierte Feedback erscheint hier..."
+                    className="w-full p-4 rounded-xl border border-slate-300 font-sans text-xs sm:text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                  />
+
+                  <div className="flex items-center justify-between gap-3 pt-2">
+                    <button
+                      onClick={() => handleGenerateFeedback(selectedSubmission)}
+                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Neu generieren</span>
+                    </button>
+
+                    <button
+                      onClick={handleSendFeedback}
+                      disabled={!aiFeedbackDraft.trim()}
+                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>An Schüler freigeben & senden</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 5: CLOUD-SPEICHER & SETUP-ASSISTENT */}
+      {/* ============================================================== */}
+      {activeTab === 'cloud' && (
+        <div className="space-y-6">
+          {/* Status Alert */}
+          <div className="bg-gradient-to-r from-blue-900 to-indigo-950 text-white p-5 sm:p-6 rounded-2xl shadow-md space-y-2">
+            <div className="flex items-center gap-2 text-blue-300 text-xs font-bold uppercase tracking-wider">
+              <Cloud className="w-4 h-4" />
+              <span>Kostenloser Cloud-Speicher Leitfaden</span>
+            </div>
+            <h3 className="text-lg font-black tracking-tight">
+              Anleitung: 100% kostenloser Cloud-Speicher für IHK-PDFs & Prüfungsergebnisse
+            </h3>
+            <p className="text-xs sm:text-sm text-blue-100 leading-relaxed max-w-4xl">
+              <strong>Wichtige Klarstellung zu Firebase & Kreditkarten:</strong> Firestore und Firebase Cloud Storage
+              sind im <strong>Firebase Spark Plan dauerhaft 100% kostenlos</strong> (5 GB Storage, 50.000 Firestore-Lesevorgänge pro Tag) – ganz{' '}
+              <strong>ohne Kreditkarte</strong>! Eine Kreditkarte wird nur dann abgefragt, wenn man versehentlich
+              auf den Blaze-Plan klickt oder das Projekt über die klassische Google Cloud Console statt die Firebase Console
+              erstellt.
+            </p>
+          </div>
+
+          {/* Step-by-Step Instructions */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+            <h4 className="font-extrabold text-slate-900 text-base">
+              Schritt-für-Schritt Einrichtung (in 3 Minuten):
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
+                  1
+                </div>
+                <h5 className="font-bold text-xs text-slate-800">Kostenloses Projekt anlegen</h5>
+                <p className="text-[11px] text-slate-600 leading-normal">
+                  Öffne <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">console.firebase.google.com</a> mit deinem Google-Account. Klicke auf <strong>„Projekt hinzufügen“</strong> (z. B. Name: <em>sbsz-ihk-pruefungen</em>). Google Analytics kann deaktiviert bleiben.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
+                  2
+                </div>
+                <h5 className="font-bold text-xs text-slate-800">Firestore & Storage aktivieren</h5>
+                <p className="text-[11px] text-slate-600 leading-normal">
+                  Klicke im Menü links auf <strong>Firestore Database</strong> $\rightarrow$ <em>Datenbank erstellen</em> $\rightarrow$ Standort <code>eur3 (europe-west)</code> $\rightarrow$ <em>Testmodus</em> wählen. Danach unter <strong>Storage</strong> auf <em>Erste Schritte</em> klicken. (Beides bleibt im kostenlosen Spark-Plan!).
+                </p>
+              </div>
+
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
+                  3
+                </div>
+                <h5 className="font-bold text-xs text-slate-800">Web-App anlegen & Keys einfügen</h5>
+                <p className="text-[11px] text-slate-600 leading-normal">
+                  Klicke auf das <strong>Zahnrad (Projekteinstellungen)</strong> $\rightarrow$ Web-App hinzufügen (<code>&lt;/&gt;</code>). Kopiere die Firebase-Config Werte und trage sie unten in die Felder ein.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Config Input Form */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-extrabold text-slate-900 text-base">
+                Firebase & Google Gemini Konfiguration
+              </h4>
+              {configSavedNotice && (
+                <span className="text-xs bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl font-bold flex items-center gap-1">
+                  <Check className="w-3.5 h-3.5" /> Gespeichert & Aktiviert!
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Project ID</label>
+                <input
+                  type="text"
+                  placeholder="z. B. sbsz-ihk-pruefungen"
+                  value={fbConfig.projectId}
+                  onChange={(e) => setFbConfig({ ...fbConfig, projectId: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">API Key</label>
+                <input
+                  type="password"
+                  placeholder="AIzaSy..."
+                  value={fbConfig.apiKey}
+                  onChange={(e) => setFbConfig({ ...fbConfig, apiKey: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Storage Bucket</label>
+                <input
+                  type="text"
+                  placeholder="sbsz-ihk-pruefungen.appspot.com"
+                  value={fbConfig.storageBucket}
+                  onChange={(e) => setFbConfig({ ...fbConfig, storageBucket: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Gemini API Key (Lehrkraft BYOK)</label>
+                <input
+                  type="password"
+                  placeholder="Eigener Key oder Schul-Standardschlüssel"
+                  value={geminiKeyInput}
+                  onChange={(e) => setGeminiKeyInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={handleSaveConfig}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm shadow transition-all flex items-center gap-2"
+            >
+              <Database className="w-4 h-4" />
+              <span>Konfiguration speichern & Cloud verbinden</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Detail Submission Modal */}
+      {selectedSubmission && activeTab === 'students' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
+            <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="font-extrabold text-base">
+                  Prüfungsbogen: {selectedSubmission.studentName}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Klasse {selectedSubmission.className} •{' '}
+                  {selectedSubmission.score
+                    ? `${selectedSubmission.score.percentage}% (Note ${selectedSubmission.score.grade})`
+                    : 'In Bearbeitung'}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedSubmission(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
+              {selectedSubmission.score ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {Array.from({ length: 28 }, (_, i) => i + 1).map((qNum) => {
+                    const evalData = selectedSubmission.score?.questionEvaluations[qNum];
+                    return (
+                      <div
+                        key={qNum}
+                        className={`p-2 rounded-xl border flex items-center justify-between ${
+                          evalData?.isDeselected
+                            ? 'bg-amber-50 border-amber-200 text-amber-800'
+                            : evalData?.isCorrect
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                            : 'bg-rose-50 border-rose-200 text-rose-800'
+                        }`}
+                      >
+                        <span className="font-bold">Aufg. {qNum}</span>
+                        <span className="font-mono font-black">
+                          {evalData?.isDeselected
+                            ? '[A]'
+                            : evalData?.studentAnswer !== null
+                            ? evalData?.studentAnswer
+                            : '—'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-slate-500">Dieser Schüler hat den Bogen noch nicht abgeschlossen.</p>
+              )}
+            </div>
+
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end shrink-0">
+              <button
+                onClick={() => setSelectedSubmission(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs"
+              >
+                Schließen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

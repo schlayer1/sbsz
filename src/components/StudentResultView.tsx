@@ -1,0 +1,319 @@
+import React, { useEffect } from 'react';
+import confetti from 'canvas-confetti';
+import {
+  Award,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  RotateCcw,
+  Sparkles,
+  BookOpen,
+  FileText,
+  Printer,
+  Compass,
+  GraduationCap,
+} from 'lucide-react';
+import { ExamDefinition, ExamSubmission } from '../types/exam';
+
+interface StudentResultViewProps {
+  exam: ExamDefinition;
+  submission: ExamSubmission;
+  onRetakeExam: () => void;
+  onJumpToPdfPage: (page: number) => void;
+}
+
+export const StudentResultView: React.FC<StudentResultViewProps> = ({
+  exam,
+  submission,
+  onRetakeExam,
+  onJumpToPdfPage,
+}) => {
+  const score = submission.score;
+
+  // Launch confetti on high scores
+  useEffect(() => {
+    if (score && score.percentage >= 67) {
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 },
+        });
+      } catch {}
+    }
+  }, [score]);
+
+  if (!score) {
+    return (
+      <div className="p-8 text-center text-slate-500">
+        Keine Auswertung verfügbar. Bitte gib zuerst den Prüfungsbogen ab.
+      </div>
+    );
+  }
+
+  const isPassed = score.percentage >= 50;
+  const feedback = submission.feedback;
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  return (
+    <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-5 sm:py-6 space-y-6">
+      {/* Top Banner & Title */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="bg-blue-100 text-ihk-blue text-xs font-bold px-2.5 py-0.5 rounded-full">
+              IHK Prüfungsabgabe
+            </span>
+            <span className="text-xs text-slate-500">
+              Eingereicht am {new Date(submission.submittedAt || Date.now()).toLocaleDateString('de-DE')} um{' '}
+              {new Date(submission.submittedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
+            Ergebnis: {exam.title}
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-600">
+            Prüfling: <strong className="text-slate-800">{submission.studentName}</strong> (Klasse {submission.className})
+          </p>
+        </div>
+
+        {/* Print / Actions */}
+        <div className="flex items-center gap-2 print:hidden">
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+          >
+            <Printer className="w-4 h-4" />
+            <span>Ergebnis drucken</span>
+          </button>
+          <button
+            onClick={onRetakeExam}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors shadow"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Bogen weiter bearbeiten</span>
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards Hero */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Score & Grade */}
+        <div className={`p-5 rounded-2xl border shadow-sm ${
+          isPassed ? 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white border-emerald-600' : 'bg-gradient-to-br from-rose-500 to-red-700 text-white border-rose-600'
+        }`}>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider opacity-90">IHK-Gesamtergebnis</span>
+            <Award className="w-6 h-6 opacity-90" />
+          </div>
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="text-4xl font-black">{score.percentage}%</span>
+            <span className="text-sm opacity-90">({score.totalPoints} / {score.maxPoints} Punkte)</span>
+          </div>
+          <div className="mt-2 text-xs font-semibold bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-lg inline-block">
+            Note {score.grade} ({score.gradeText}) • {isPassed ? 'Bestanden' : 'Nicht bestanden'}
+          </div>
+        </div>
+
+        {/* Correct Answers */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-emerald-600">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Richtig gelöst</span>
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div className="mt-3 text-3xl font-black text-slate-900">{score.correctCount}</div>
+          <p className="text-xs text-slate-500 mt-1">Gewertete richtige Antworten</p>
+        </div>
+
+        {/* Errors */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-rose-500">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Fehlerhaft</span>
+            <XCircle className="w-5 h-5" />
+          </div>
+          <div className="mt-3 text-3xl font-black text-slate-900">{score.errorCount}</div>
+          <p className="text-xs text-slate-500 mt-1">Aufgaben mit Abweichungen</p>
+        </div>
+
+        {/* Deselected */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between text-amber-500">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Abgewählt [A]</span>
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div className="mt-3 text-3xl font-black text-slate-900">{score.deselectedCount}</div>
+          <p className="text-xs text-slate-500 mt-1">IHK-Abwahlregel angewendet</p>
+        </div>
+      </div>
+
+      {/* Teacher / Gemini AI Feedback Section */}
+      {feedback && feedback.isSent ? (
+        <div className="bg-gradient-to-br from-indigo-50 via-blue-50 to-white rounded-2xl border-2 border-indigo-200 p-5 sm:p-6 shadow-md space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base sm:text-lg text-slate-900">
+                  Individuelles Lern-Feedback von deinem Fachlehrer
+                </h3>
+                <p className="text-xs text-indigo-700">
+                  Erstellt mit Unterstützung des SBSZ KI-Prüfungscoaches (Google Gemini)
+                </p>
+              </div>
+            </div>
+            <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2.5 py-1 rounded-full hidden sm:inline-block">
+              Lehrerfreigabe erteilt ✓
+            </span>
+          </div>
+
+          <div className="bg-white/90 backdrop-blur rounded-xl p-4 sm:p-5 border border-indigo-100 text-sm leading-relaxed text-slate-800 whitespace-pre-line shadow-inner">
+            {feedback.text}
+          </div>
+
+          {/* Quick learning references */}
+          {feedback.learningTips && feedback.learningTips.length > 0 && (
+            <div className="bg-white rounded-xl p-4 border border-indigo-100">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 flex items-center gap-1.5 mb-2">
+                <BookOpen className="w-4 h-4 text-indigo-600" />
+                <span>Empfohlene Anlaufstellen zum Nachschlagen</span>
+              </h4>
+              <ul className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                {feedback.learningTips.map((tip, idx) => (
+                  <li key={idx} className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs text-slate-700 flex items-start gap-2">
+                    <Compass className="w-3.5 h-3.5 text-indigo-600 shrink-0 mt-0.5" />
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="bg-slate-50 rounded-2xl border border-slate-200 p-5 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0">
+              <GraduationCap className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-slate-800">Lehrer-Feedback in Vorbereitung</h4>
+              <p className="text-xs text-slate-500">
+                Dein Fachlehrer wertet deine Ausarbeitung aus. Sobald ein individuelles KI-Feedback freigegeben ist, kannst du es hier abrufen.
+              </p>
+            </div>
+          </div>
+          <span className="text-xs bg-slate-200 text-slate-700 px-3 py-1.5 rounded-xl font-medium shrink-0">
+            Status: Zur Durchsicht beim Lehrer
+          </span>
+        </div>
+      )}
+
+      {/* Detailed Question Review Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between">
+          <div>
+            <h3 className="font-extrabold text-base text-slate-900">
+              Detaillierte Fehlerauswertung (Aufgaben 1 bis {exam.totalQuestions})
+            </h3>
+            <p className="text-xs text-slate-500">
+              Vergleich deiner Antworten mit den offiziellen IHK-Lösungsschlüsseln
+            </p>
+          </div>
+          <div className="flex items-center gap-3 text-xs font-semibold">
+            <span className="flex items-center gap-1 text-emerald-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Richtig
+            </span>
+            <span className="flex items-center gap-1 text-rose-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500" /> Falsch
+            </span>
+            <span className="flex items-center gap-1 text-amber-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Abgewählt
+            </span>
+          </div>
+        </div>
+
+        <div className="divide-y divide-slate-100 overflow-x-auto">
+          {Array.from({ length: exam.totalQuestions }, (_, i) => i + 1).map((qNum) => {
+            const evalData = score.questionEvaluations[qNum];
+            const qDef = exam.questions.find((q) => q.number === qNum);
+            const pageNum = qDef?.pageNumber || 3;
+
+            return (
+              <div
+                key={qNum}
+                className={`p-3.5 sm:px-5 flex items-center justify-between gap-3 transition-colors ${
+                  evalData?.isDeselected
+                    ? 'bg-amber-50/40 text-slate-600'
+                    : evalData?.isCorrect
+                    ? 'hover:bg-emerald-50/30'
+                    : 'bg-rose-50/30 hover:bg-rose-50/50'
+                }`}
+              >
+                {/* Question Info */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                      evalData?.isDeselected
+                        ? 'bg-amber-100 text-amber-800'
+                        : evalData?.isCorrect
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-rose-100 text-rose-800'
+                    }`}
+                  >
+                    {qNum}
+                  </div>
+                  <div className="truncate">
+                    <div className="text-xs sm:text-sm font-bold text-slate-800 truncate">
+                      {qDef?.topic || `Aufgabe ${qNum}`}
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      Im Aufgabenheft auf Seite {pageNum}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Answer comparison */}
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Deine Wahl</div>
+                    <div className="text-xs sm:text-sm font-extrabold font-mono">
+                      {evalData?.isDeselected ? (
+                        <span className="text-amber-700 bg-amber-100 px-2 py-0.5 rounded">Abgewählt [A]</span>
+                      ) : evalData?.studentAnswer !== null ? (
+                        <span className={evalData.isCorrect ? 'text-emerald-700' : 'text-rose-600'}>
+                          Option {evalData.studentAnswer}
+                        </span>
+                      ) : (
+                        <span className="text-slate-400 italic">Keine Angabe</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">IHK Lösung</div>
+                    <div className="text-xs sm:text-sm font-extrabold font-mono text-blue-800 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      Option {evalData?.correctAnswer}
+                    </div>
+                  </div>
+
+                  {/* Jump to page in PDF */}
+                  <button
+                    onClick={() => onJumpToPdfPage(pageNum)}
+                    className="p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-xl transition-colors"
+                    title={`Aufgabe ${qNum} im PDF (Seite ${pageNum}) ansehen`}
+                  >
+                    <FileText className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
