@@ -383,15 +383,35 @@ function saveStudentToLocal(student: StudentProfile): void {
 export async function getStudentSubmission(examId: string, studentId: string): Promise<ExamSubmission | null> {
   const submissionId = `sub_${examId}_${studentId}`;
   const localSubs = getLocalSubmissions();
-  const localSub = localSubs.find((s) => s.id === submissionId);
+  
+  // 1. Lokale Suche: exakte ID oder studentId match
+  let localSub = localSubs.find((s) => s.id === submissionId || (s.examId === examId && (s.studentId === studentId || s.studentCode === studentId)));
 
   if (!db) return localSub || null;
 
   try {
+    // 2. Firestore Direkt-Abfrage
     const docRef = doc(db, SUBMISSIONS_COLLECTION, submissionId);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
       const data = snap.data() as ExamSubmission;
+      saveSubmissionToLocal(data);
+      return data;
+    }
+
+    // 3. Fallback: Query nach studentId oder studentCode
+    const q1 = query(collection(db, SUBMISSIONS_COLLECTION), where('examId', '==', examId), where('studentId', '==', studentId));
+    const snap1 = await getDocs(q1);
+    if (!snap1.empty) {
+      const data = snap1.docs[0].data() as ExamSubmission;
+      saveSubmissionToLocal(data);
+      return data;
+    }
+
+    const q2 = query(collection(db, SUBMISSIONS_COLLECTION), where('examId', '==', examId), where('studentCode', '==', studentId));
+    const snap2 = await getDocs(q2);
+    if (!snap2.empty) {
+      const data = snap2.docs[0].data() as ExamSubmission;
       saveSubmissionToLocal(data);
       return data;
     }

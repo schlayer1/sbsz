@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, ShieldCheck, LogOut, FileText, CheckCircle2 } from 'lucide-react';
+import { User, ShieldCheck, LogOut, FileText, CheckCircle2, Sparkles } from 'lucide-react';
 import { StudentProfile } from '../types/exam';
 
 interface NavbarProps {
@@ -12,6 +12,7 @@ interface NavbarProps {
   activeView: 'exam' | 'result' | 'teacher';
   setActiveView: (view: 'exam' | 'result' | 'teacher') => void;
   hasSubmission: boolean;
+  hasFeedback?: boolean;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -24,6 +25,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeView,
   setActiveView,
   hasSubmission,
+  hasFeedback,
 }) => {
   return (
     <header className="bg-sbsz-blue text-white shadow-md sticky top-0 z-40 border-b border-sbsz-navy/40">
@@ -78,6 +80,21 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Auswertung</span>
+              </button>
+            )}
+
+            {hasFeedback && (
+              <button
+                onClick={() => setActiveView('result')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                  activeView === 'result'
+                    ? 'bg-amber-400 text-slate-950 shadow-md ring-2 ring-amber-300'
+                    : 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30 border border-amber-400/40 animate-pulse'
+                }`}
+                title="Dein Fachlehrer hat dir ein individuelles Feedback gesendet"
+              >
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>Lehrer-Feedback</span>
               </button>
             )}
           </div>

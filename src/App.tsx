@@ -73,22 +73,30 @@ export function App() {
   useEffect(() => {
     if (!currentStudent || !activeExam) return;
 
-    getStudentSubmission(activeExam.id, currentStudent.id).then((sub) => {
-      if (sub) {
-        setCurrentSubmission(sub);
-        setAnswers(sub.answers || {});
-        setDeselected(sub.deselected || []);
-        setLastSavedAt(sub.updatedAt);
-        if (sub.status === 'abgegeben') {
-          setActiveView('result');
+    const fetchSubmission = () => {
+      getStudentSubmission(activeExam.id, currentStudent.id).then((sub) => {
+        if (sub) {
+          setCurrentSubmission(sub);
+          setAnswers(sub.answers || {});
+          setDeselected(sub.deselected || []);
+          setLastSavedAt(sub.updatedAt);
+          if (sub.status === 'abgegeben' && activeView !== 'result') {
+            setActiveView('result');
+          }
+        } else {
+          // Fresh attempt
+          setCurrentSubmission(null);
+          setAnswers({});
+          setDeselected([]);
         }
-      } else {
-        // Fresh attempt
-        setCurrentSubmission(null);
-        setAnswers({});
-        setDeselected([]);
-      }
-    });
+      });
+    };
+
+    fetchSubmission();
+
+    // Polling alle 5 Sekunden nach neuem Lehrer-Feedback, falls Prüfung abgegeben
+    const interval = setInterval(fetchSubmission, 5000);
+    return () => clearInterval(interval);
   }, [currentStudent, activeExam]);
 
   // Debounced Auto-Save
@@ -257,6 +265,7 @@ export function App() {
         activeView={activeView}
         setActiveView={setActiveView}
         hasSubmission={currentSubmission?.status === 'abgegeben'}
+        hasFeedback={Boolean(currentSubmission?.feedback?.isSent)}
       />
 
       {/* Main Content Area */}
