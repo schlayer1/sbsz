@@ -848,14 +848,27 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 </p>
               </div>
 
-              <button
-                onClick={handleSyncGoogleDrive}
-                disabled={isSyncingDrive}
-                className="bg-sbsz-blue hover:bg-sbsz-darkBlue text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSyncingDrive ? 'animate-spin' : ''}`} />
-                <span>{isSyncingDrive ? 'Synchronisiere Ordner...' : 'Jetzt Ordner synchronisieren'}</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <a
+                  href={`https://drive.google.com/drive/folders/${driveFolderId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
+                  title="Öffnet den Google Drive Ordner in einem neuen Tab, um PDFs hochzuladen oder abzulegen"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Google Drive Ordner öffnen</span>
+                </a>
+
+                <button
+                  onClick={handleSyncGoogleDrive}
+                  disabled={isSyncingDrive}
+                  className="bg-sbsz-blue hover:bg-sbsz-darkBlue text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncingDrive ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingDrive ? 'Synchronisiere Ordner...' : 'Jetzt Ordner synchronisieren'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Status Feedback */}
@@ -1397,7 +1410,20 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Google Drive Ordner-ID (Auto-Sync)</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-700">Google Drive Ordner-ID (Auto-Sync)</label>
+                  {driveFolderId && (
+                    <a
+                      href={`https://drive.google.com/drive/folders/${driveFolderId}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-sbsz-blue hover:underline font-bold inline-flex items-center gap-1"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Ordner in Google Drive öffnen</span>
+                    </a>
+                  )}
+                </div>
                 <input
                   type="text"
                   placeholder="13BZyRvoznEnBV7kXiLXUhyFOfxcYRXCA"
