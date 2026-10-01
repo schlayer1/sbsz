@@ -18,7 +18,6 @@ export const TeacherAuthModal: React.FC<TeacherAuthModalProps> = ({ isOpen, onCl
     e.preventDefault();
     setError(null);
 
-    // Stored custom pin or default PIN
     const savedPin = localStorage.getItem('sbsz_teacher_pin') || DEFAULT_TEACHER_PIN;
 
     if (pin.trim() === savedPin || pin.trim() === 'Year2003?!%' || pin.trim() === '1234') {
@@ -30,33 +29,33 @@ export const TeacherAuthModal: React.FC<TeacherAuthModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-sbsz-navy/70 backdrop-blur-sm animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
-        <div className="bg-slate-900 text-white p-5 flex items-center justify-between">
+        <div className="bg-sbsz-darkBlue text-white p-5 flex items-center justify-between border-b border-sbsz-navy">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center">
-              <ShieldCheck className="w-5 h-5 text-amber-400" />
+            <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow shrink-0">
+              <img src="/sbsz-logo.png" alt="SBSZ Logo" className="w-full h-full object-contain" />
             </div>
             <div>
-              <h3 className="font-bold text-base">Lehrer-Zugang</h3>
-              <p className="text-xs text-slate-400">Verwaltung & Auswertung</p>
+              <h3 className="font-extrabold text-base">SBSZ Kollegium</h3>
+              <p className="text-xs text-blue-200">Lehrer-Zugang & Verwaltung</p>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-white p-1 rounded-lg">
+          <button onClick={onClose} className="text-white/70 hover:text-white p-1 rounded-lg">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 bg-white">
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-xs p-3 rounded-xl flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+            <div className="bg-sbsz-lightRed border border-red-200 text-sbsz-darkRed text-xs p-3 rounded-xl flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-sbsz-red" />
               <span>{error}</span>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center gap-1.5">
+            <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
               <KeyRound className="w-3.5 h-3.5 text-slate-500" />
               <span>Lehrer-PIN / Passwort</span>
             </label>
@@ -66,16 +65,16 @@ export const TeacherAuthModal: React.FC<TeacherAuthModalProps> = ({ isOpen, onCl
               placeholder="Standard: 1234"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-center tracking-widest text-lg font-mono focus:outline-none focus:ring-2 focus:ring-amber-500"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-center tracking-widest text-lg font-mono focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
             />
             <p className="text-[11px] text-slate-400 mt-1.5 text-center">
-              Standard-PIN: <span className="font-mono font-bold text-slate-600">1234</span> (im Dashboard änderbar)
+              Standard-PIN: <span className="font-mono font-bold text-slate-600">1234</span>
             </p>
           </div>
 
           <button
             type="submit"
-            className="w-full bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold py-2.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm"
+            className="w-full bg-sbsz-blue hover:bg-sbsz-darkBlue text-white font-extrabold py-2.5 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm"
           >
             <Lock className="w-4 h-4" />
             <span>Dashboard entsperren</span>

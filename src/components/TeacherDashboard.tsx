@@ -6,23 +6,16 @@ import {
   Sparkles,
   Cloud,
   CheckCircle2,
-  XCircle,
   AlertTriangle,
-  Upload,
   Plus,
   Send,
   Eye,
-  KeyRound,
   ShieldCheck,
   RefreshCw,
   Search,
   ExternalLink,
-  Copy,
   Check,
   Database,
-  Lock,
-  Layers,
-  Award,
 } from 'lucide-react';
 import {
   ExamDefinition,
@@ -40,9 +33,7 @@ import {
   getCustomFirebaseConfig,
   saveCustomFirebaseConfig,
   db,
-  storage,
 } from '../services/firebase';
-import { uploadExamPdf } from '../services/storage';
 import {
   generateStudentFeedbackWithAI,
   getActiveGeminiApiKey,
@@ -79,13 +70,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [aiError, setAiError] = useState<string | null>(null);
   const [feedbackSentSuccess, setFeedbackSentSuccess] = useState(false);
 
-  // New Exam Modal
-  const [showNewExamModal, setShowNewExamModal] = useState(false);
-  const [newExamTitle, setNewExamTitle] = useState('');
-  const [newExamCode, setNewExamCode] = useState('');
-  const [newExamFile, setNewExamFile] = useState<File | null>(null);
-  const [newExamClasses, setNewExamClasses] = useState('Alle, ZM22A, ZM22B, ZM23');
-
   // Firebase Config Form
   const [fbConfig, setFbConfig] = useState<FirebaseCustomConfig>({
     apiKey: '',
@@ -111,7 +95,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       setStudents(loadedStudents);
       setSubmissions(loadedSubs);
 
-      // Load config if present
       const savedConfig = getCustomFirebaseConfig();
       if (savedConfig) setFbConfig(savedConfig);
 
@@ -138,12 +121,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     return matchesClass && matchesSearch;
   });
 
-  // Extract unique classes
   const allClasses = Array.from(
     new Set(['Alle', ...submissions.map((s) => s.className), ...students.map((s) => s.className)])
   ).filter(Boolean);
 
-  // Handle AI Feedback Generation
+  // AI Feedback Generation
   const handleGenerateFeedback = async (sub: ExamSubmission) => {
     setSelectedSubmission(sub);
     setIsGeneratingAi(true);
@@ -165,7 +147,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         sub.score,
         sub.id,
         sub.studentId,
-        'Fachlehrer SBSZ'
+        'Fachlehrer SBSZ Jena'
       );
       setAiFeedbackDraft(feedback.text);
     } catch (err: any) {
@@ -191,7 +173,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       generatedAt: Date.now(),
       sentAt: Date.now(),
       isSent: true,
-      teacherName: 'Fachlehrer Metalltechnik',
+      teacherName: 'Fachlehrer Metalltechnik SBSZ Jena',
     };
 
     await sendFeedbackToStudent(selectedSubmission.id, teacherFeedback);
@@ -199,7 +181,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     await loadData();
   };
 
-  // Toggle Exam Class Assignment
   const handleToggleClassAssignment = async (exam: ExamDefinition, cls: string) => {
     let updatedClasses = [...exam.assignedClasses];
     if (updatedClasses.includes(cls)) {
@@ -212,7 +193,6 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setExams((prev) => prev.map((e) => (e.id === exam.id ? updatedExam : e)));
   };
 
-  // Save Config
   const handleSaveConfig = () => {
     if (fbConfig.projectId && fbConfig.apiKey) {
       saveCustomFirebaseConfig(fbConfig);
@@ -224,7 +204,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setTimeout(() => setConfigSavedNotice(false), 3000);
   };
 
-  // Compute Question Heatmap / Analytics
+  // Question Heatmap
   const computeQuestionAnalytics = () => {
     const totalSubsWithScore = filteredSubmissions.filter((s) => s.score !== null);
     const count = totalSubsWithScore.length;
@@ -273,41 +253,41 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   return (
     <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-5 sm:py-6 space-y-6 animate-fade-in">
-      {/* Dashboard Top Header */}
-      <div className="bg-slate-900 text-white p-5 sm:p-6 rounded-2xl shadow-xl border border-slate-800 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-400 text-amber-400 flex items-center justify-center font-black">
-            <ShieldCheck className="w-6 h-6" />
+      {/* Dashboard Top Header in SBSZ Blue Theme */}
+      <div className="bg-gradient-to-r from-sbsz-darkBlue via-sbsz-blue to-sbsz-blue text-white p-5 sm:p-6 rounded-2xl shadow-xl border border-sbsz-navy/40 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <div className="w-12 h-12 rounded-xl bg-white p-1 shadow-md flex items-center justify-center shrink-0">
+            <img src="/sbsz-logo.png" alt="SBSZ Logo" className="w-full h-full object-contain" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-black tracking-tight">
-                Lehrer-Dashboard & Prüfungsverwaltung
+                SBSZ Jena-Göschwitz • Lehrer-Dashboard
               </h1>
-              <span className="bg-amber-400/20 text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-bold border border-amber-400/30">
-                Kollegium SBSZ
+              <span className="bg-white/20 text-white text-xs px-2.5 py-0.5 rounded-full font-bold">
+                Kollegium
               </span>
             </div>
-            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
-              Zentrale Verwaltung aller IHK-Prüfungsbögen, Live-Fortschritte, Fehleranalysen und KI-Feedback
+            <p className="text-xs sm:text-sm text-blue-100 mt-0.5">
+              Prüfungsverwaltung, Schülerfortschritt, Fehlerquoten und didaktische KI-Lernfeedbacks
             </p>
           </div>
         </div>
 
         {/* Database & Storage Status indicator */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs">
+          <div className="flex items-center gap-2 bg-sbsz-navy/70 px-3 py-1.5 rounded-xl border border-white/10 text-xs">
             <span
-              className={`w-2 h-2 rounded-full ${db ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}
+              className={`w-2 h-2 rounded-full ${db ? 'bg-sbsz-lime animate-pulse' : 'bg-amber-400'}`}
             />
-            <span className="text-slate-300 font-medium">
+            <span className="text-white font-medium">
               {db ? 'Firebase Cloud aktiv' : 'Lokaler Cache aktiv'}
             </span>
           </div>
 
           <button
             onClick={loadData}
-            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 hover:text-white transition-colors"
+            className="p-2 bg-sbsz-navy/70 hover:bg-sbsz-navy rounded-xl text-white transition-colors"
             title="Daten aktualisieren"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
@@ -332,7 +312,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold whitespace-nowrap transition-all ${
                 isActive
-                  ? 'bg-ihk-blue text-white shadow-md'
+                  ? 'bg-sbsz-blue text-white shadow-md'
                   : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200'
               }`}
             >
@@ -341,7 +321,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               {tab.count !== undefined && (
                 <span
                   className={`text-[11px] px-1.5 py-0.2 rounded-full font-mono ${
-                    isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    isActive ? 'bg-white/20 text-white font-bold' : 'bg-slate-100 text-slate-600'
                   }`}
                 >
                   {tab.count}
@@ -352,9 +332,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         })}
       </div>
 
-      {/* ============================================================== */}
       {/* TAB 1: SCHÜLER & ABGABEN */}
-      {/* ============================================================== */}
       {activeTab === 'students' && (
         <div className="space-y-4">
           {/* Controls Strip: Class Filter & Search */}
@@ -367,7 +345,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   onClick={() => setSelectedClass(cls)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                     selectedClass === cls
-                      ? 'bg-blue-600 text-white shadow'
+                      ? 'bg-sbsz-blue text-white shadow'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                   }`}
                 >
@@ -383,7 +361,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 placeholder="Schüler suchen..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
               />
             </div>
           </div>
@@ -401,7 +379,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <Users className="w-10 h-10 text-slate-300 mx-auto" />
                 <p className="font-semibold text-slate-700">Noch keine Abgaben für diese Auswahl vorhanden.</p>
                 <p className="text-xs text-slate-400">
-                  Sobald Schüler über das Portal ihre Bögen bearbeiten, erscheinen ihre Fortschritte hier in Echtzeit.
+                  Sobald Schüler über das Portal ihre Bögen bearbeiten, erscheinen ihre Ergebnisse hier in Echtzeit.
                 </p>
               </div>
             ) : (
@@ -429,7 +407,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             {sub.studentName}
                           </td>
                           <td className="p-3 sm:px-4">
-                            <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-xs text-slate-700">
+                            <span className="font-mono bg-sbsz-lightBlue text-sbsz-darkBlue font-bold px-2 py-0.5 rounded text-xs border border-sbsz-borderBlue">
                               {sub.className}
                             </span>
                           </td>
@@ -456,7 +434,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                     ? 'bg-emerald-100 text-emerald-800'
                                     : score.grade === 4
                                     ? 'bg-blue-100 text-blue-800'
-                                    : 'bg-rose-100 text-rose-800'
+                                    : 'bg-sbsz-lightRed text-sbsz-darkRed font-black'
                                 }`}
                               >
                                 Note {score.grade} ({score.percentage}%)
@@ -487,7 +465,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                                 setActiveTab('gemini');
                                 handleGenerateFeedback(sub);
                               }}
-                              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs transition-colors"
+                              className="px-2.5 py-1 rounded-lg bg-sbsz-lightBlue hover:bg-sbsz-blue hover:text-white text-sbsz-darkBlue font-bold text-xs transition-colors"
                               title="KI-Feedback erstellen"
                             >
                               KI-Coach
@@ -504,22 +482,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       )}
 
-      {/* ============================================================== */}
       {/* TAB 2: PRÜFUNGSBÖGEN VERWALTEN */}
-      {/* ============================================================== */}
       {activeTab === 'exams' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-extrabold text-slate-900 text-base">
               Hinterlegte IHK-Prüfungshefte & Lösungsschlüssel
             </h3>
-            <button
-              onClick={() => setShowNewExamModal(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 shadow transition-all"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Neuen Prüfungsbogen anlegen</span>
-            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -530,7 +499,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               >
                 <div>
                   <div className="flex items-center justify-between">
-                    <span className="bg-blue-100 text-ihk-blue text-xs font-bold px-2.5 py-0.5 rounded-full">
+                    <span className="bg-sbsz-lightBlue text-sbsz-darkBlue border border-sbsz-borderBlue text-xs font-bold px-2.5 py-0.5 rounded-full">
                       {exam.examCode}
                     </span>
                     <span
@@ -563,7 +532,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 {/* Class Assignment Switches */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-2">
-                    Freigabe für Klassen:
+                    Freigabe für Klassen am SBSZ:
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {['Alle', 'ZM22A', 'ZM22B', 'ZM23'].map((cls) => {
@@ -574,7 +543,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           onClick={() => handleToggleClassAssignment(exam, cls)}
                           className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
                             isAssigned
-                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                              ? 'bg-sbsz-blue text-white border-sbsz-blue shadow-sm'
                               : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
                           }`}
                         >
@@ -589,7 +558,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                   <button
                     onClick={() => onSelectExamForPreview(exam)}
-                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
+                    className="flex-1 bg-sbsz-lightBlue hover:bg-sbsz-blue hover:text-white text-sbsz-darkBlue py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors border border-sbsz-borderBlue"
                   >
                     <Eye className="w-3.5 h-3.5" />
                     <span>In Schüleransicht testen</span>
@@ -610,9 +579,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       )}
 
-      {/* ============================================================== */}
       {/* TAB 3: KLASSEN-FEHLERANALYSE (HEATMAP) */}
-      {/* ============================================================== */}
       {activeTab === 'analytics' && (
         <div className="space-y-4">
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
@@ -620,7 +587,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               Klassen-Fehlerquote pro Prüfungsaufgabe (Aufgaben 1 bis 28)
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Identifiziert automatisch die thematischen Schwachstellen des Jahrgangs für gezielten Förderunterricht.
+              Identifiziert automatisch die thematischen Schwachstellen des Jahrgangs für gezielten Förderunterricht am SBSZ.
             </p>
 
             {questionAnalytics.length === 0 ? (
@@ -633,12 +600,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <div key={item.questionNum} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2 font-bold text-slate-800">
-                        <span className="w-6 h-6 rounded-md bg-slate-900 text-white flex items-center justify-center text-[11px]">
+                        <span className="w-6 h-6 rounded-md bg-sbsz-darkBlue text-white flex items-center justify-center text-[11px]">
                           {item.questionNum}
                         </span>
                         <span>{item.topic}</span>
                       </div>
-                      <span className="font-extrabold font-mono text-rose-600">
+                      <span className="font-extrabold font-mono text-sbsz-red">
                         {item.errorRate}% Fehler
                       </span>
                     </div>
@@ -646,7 +613,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex">
                       <div
                         style={{ width: `${item.errorRate}%` }}
-                        className="bg-rose-500 h-full transition-all"
+                        className="bg-sbsz-red h-full transition-all"
                         title={`Fehler: ${item.errorRate}%`}
                       />
                       <div
@@ -668,19 +635,17 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       )}
 
-      {/* ============================================================== */}
       {/* TAB 4: KI-FEEDBACK (GEMINI) */}
-      {/* ============================================================== */}
       {activeTab === 'gemini' && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow">
-                <Sparkles className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-xl bg-sbsz-blue text-white flex items-center justify-center shadow">
+                <Sparkles className="w-5 h-5 text-sbsz-cyan" />
               </div>
               <div>
                 <h3 className="font-extrabold text-base text-slate-900">
-                  Google Gemini Didaktik-Coach
+                  SBSZ Didaktik-Coach (Google Gemini)
                 </h3>
                 <p className="text-xs text-slate-500">
                   Erstellt personalisierte Stärken-, Schwächen- und Tabellenbuch-Empfehlungen
@@ -689,13 +654,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             </div>
 
             {selectedSubmission && (
-              <span className="bg-blue-100 text-ihk-blue text-xs font-bold px-3 py-1 rounded-xl">
+              <span className="bg-sbsz-lightBlue text-sbsz-darkBlue border border-sbsz-borderBlue text-xs font-bold px-3 py-1 rounded-xl">
                 Ausgewählt: {selectedSubmission.studentName} ({selectedSubmission.className})
               </span>
             )}
           </div>
 
-          {/* Student selection dropdown if none selected */}
           {!selectedSubmission ? (
             <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 text-center space-y-3">
               <p className="text-sm font-semibold text-slate-700">
@@ -706,7 +670,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <button
                     key={sub.id}
                     onClick={() => handleGenerateFeedback(sub)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-blue-50 text-slate-800 border border-slate-300 shadow-sm transition-all"
+                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-sbsz-lightBlue text-slate-800 border border-slate-300 shadow-sm transition-all"
                   >
                     {sub.studentName} ({sub.className})
                   </button>
@@ -716,8 +680,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           ) : (
             <div className="space-y-4">
               {aiError && (
-                <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+                <div className="bg-sbsz-lightRed border border-red-200 text-sbsz-darkRed text-xs p-3 rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-sbsz-red" />
                   <span>{aiError}</span>
                 </div>
               )}
@@ -733,12 +697,12 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
               {isGeneratingAi ? (
                 <div className="p-8 text-center space-y-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <Sparkles className="w-8 h-8 text-indigo-600 mx-auto animate-pulse" />
+                  <Sparkles className="w-8 h-8 text-sbsz-blue mx-auto animate-pulse" />
                   <p className="text-sm font-bold text-slate-800">
                     Gemini analysiert die Fehler des Schülers...
                   </p>
                   <p className="text-xs text-slate-500">
-                    Kaskadenabfrage an gemini-flash-lite-latest / gemini-3-flash-preview läuft.
+                    Kaskadenabfrage an gemini-flash-lite-latest läuft.
                   </p>
                 </div>
               ) : (
@@ -755,7 +719,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     value={aiFeedbackDraft}
                     onChange={(e) => setAiFeedbackDraft(e.target.value)}
                     placeholder="Das generierte Feedback erscheint hier..."
-                    className="w-full p-4 rounded-xl border border-slate-300 font-sans text-xs sm:text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-slate-50"
+                    className="w-full p-4 rounded-xl border border-slate-300 font-sans text-xs sm:text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-sbsz-blue bg-slate-50"
                   />
 
                   <div className="flex items-center justify-between gap-3 pt-2">
@@ -770,7 +734,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <button
                       onClick={handleSendFeedback}
                       disabled={!aiFeedbackDraft.trim()}
-                      className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
+                      className="px-5 py-2.5 rounded-xl bg-sbsz-red hover:bg-sbsz-darkRed text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
                     >
                       <Send className="w-4 h-4" />
                       <span>An Schüler freigeben & senden</span>
@@ -783,80 +747,33 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       )}
 
-      {/* ============================================================== */}
       {/* TAB 5: CLOUD-SPEICHER & SETUP-ASSISTENT */}
-      {/* ============================================================== */}
       {activeTab === 'cloud' && (
         <div className="space-y-6">
-          {/* Status Alert */}
-          <div className="bg-gradient-to-r from-blue-900 to-indigo-950 text-white p-5 sm:p-6 rounded-2xl shadow-md space-y-2">
-            <div className="flex items-center gap-2 text-blue-300 text-xs font-bold uppercase tracking-wider">
+          <div className="bg-gradient-to-r from-sbsz-darkBlue via-sbsz-blue to-sbsz-blue text-white p-5 sm:p-6 rounded-2xl shadow-md space-y-2">
+            <div className="flex items-center gap-2 text-sbsz-cyan text-xs font-bold uppercase tracking-wider">
               <Cloud className="w-4 h-4" />
-              <span>Kostenloser Cloud-Speicher Leitfaden</span>
+              <span>SBSZ Jena-Göschwitz Cloud-Speicher Leitfaden</span>
             </div>
             <h3 className="text-lg font-black tracking-tight">
               Anleitung: 100% kostenloser Cloud-Speicher für IHK-PDFs & Prüfungsergebnisse
             </h3>
             <p className="text-xs sm:text-sm text-blue-100 leading-relaxed max-w-4xl">
-              <strong>Wichtige Klarstellung zu Firebase & Kreditkarten:</strong> Firestore und Firebase Cloud Storage
-              sind im <strong>Firebase Spark Plan dauerhaft 100% kostenlos</strong> (5 GB Storage, 50.000 Firestore-Lesevorgänge pro Tag) – ganz{' '}
-              <strong>ohne Kreditkarte</strong>! Eine Kreditkarte wird nur dann abgefragt, wenn man versehentlich
-              auf den Blaze-Plan klickt oder das Projekt über die klassische Google Cloud Console statt die Firebase Console
-              erstellt.
+              Im <strong>Firebase Spark Plan</strong> ist die Speicherung dauerhaft 100% kostenlos und erfordert{' '}
+              <strong>keine Kreditkarte</strong> (5 GB Storage, 50.000 Firestore-Lesevorgänge pro Tag).
             </p>
           </div>
 
-          {/* Step-by-Step Instructions */}
           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
             <h4 className="font-extrabold text-slate-900 text-base">
-              Schritt-für-Schritt Einrichtung (in 3 Minuten):
+              Firebase & Google Gemini Konfiguration
             </h4>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
-                  1
-                </div>
-                <h5 className="font-bold text-xs text-slate-800">Kostenloses Projekt anlegen</h5>
-                <p className="text-[11px] text-slate-600 leading-normal">
-                  Öffne <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-blue-600 underline">console.firebase.google.com</a> mit deinem Google-Account. Klicke auf <strong>„Projekt hinzufügen“</strong> (z. B. Name: <em>sbsz-ihk-pruefungen</em>). Google Analytics kann deaktiviert bleiben.
-                </p>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
-                  2
-                </div>
-                <h5 className="font-bold text-xs text-slate-800">Firestore & Storage aktivieren</h5>
-                <p className="text-[11px] text-slate-600 leading-normal">
-                  Klicke im Menü links auf <strong>Firestore Database</strong> $\rightarrow$ <em>Datenbank erstellen</em> $\rightarrow$ Standort <code>eur3 (europe-west)</code> $\rightarrow$ <em>Testmodus</em> wählen. Danach unter <strong>Storage</strong> auf <em>Erste Schritte</em> klicken. (Beides bleibt im kostenlosen Spark-Plan!).
-                </p>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-xs">
-                  3
-                </div>
-                <h5 className="font-bold text-xs text-slate-800">Web-App anlegen & Keys einfügen</h5>
-                <p className="text-[11px] text-slate-600 leading-normal">
-                  Klicke auf das <strong>Zahnrad (Projekteinstellungen)</strong> $\rightarrow$ Web-App hinzufügen (<code>&lt;/&gt;</code>). Kopiere die Firebase-Config Werte und trage sie unten in die Felder ein.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Config Input Form */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-slate-900 text-base">
-                Firebase & Google Gemini Konfiguration
-              </h4>
-              {configSavedNotice && (
-                <span className="text-xs bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl font-bold flex items-center gap-1">
-                  <Check className="w-3.5 h-3.5" /> Gespeichert & Aktiviert!
-                </span>
-              )}
-            </div>
+            {configSavedNotice && (
+              <span className="text-xs bg-emerald-100 text-emerald-800 px-3 py-1 rounded-xl font-bold flex items-center gap-1">
+                <Check className="w-3.5 h-3.5" /> Gespeichert & Aktiviert!
+              </span>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
               <div>
@@ -906,7 +823,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
             <button
               onClick={handleSaveConfig}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm shadow transition-all flex items-center gap-2"
+              className="bg-sbsz-blue hover:bg-sbsz-darkBlue text-white font-bold px-5 py-2.5 rounded-xl text-xs sm:text-sm shadow transition-all flex items-center gap-2"
             >
               <Database className="w-4 h-4" />
               <span>Konfiguration speichern & Cloud verbinden</span>
@@ -917,14 +834,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       {/* Detail Submission Modal */}
       {selectedSubmission && activeTab === 'students' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-sbsz-navy/70 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-200">
-            <div className="bg-slate-900 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+            <div className="bg-sbsz-darkBlue text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="font-extrabold text-base">
                   Prüfungsbogen: {selectedSubmission.studentName}
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-blue-200">
                   Klasse {selectedSubmission.className} •{' '}
                   {selectedSubmission.score
                     ? `${selectedSubmission.score.percentage}% (Note ${selectedSubmission.score.grade})`
@@ -933,7 +850,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
               <button
                 onClick={() => setSelectedSubmission(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg"
+                className="text-slate-300 hover:text-white p-1 rounded-lg"
               >
                 ✕
               </button>
@@ -952,7 +869,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                             ? 'bg-amber-50 border-amber-200 text-amber-800'
                             : evalData?.isCorrect
                             ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                            : 'bg-rose-50 border-rose-200 text-rose-800'
+                            : 'bg-sbsz-lightRed border-red-200 text-sbsz-darkRed font-black'
                         }`}
                       >
                         <span className="font-bold">Aufg. {qNum}</span>
