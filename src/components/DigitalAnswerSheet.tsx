@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   CheckCircle,
+  CheckCircle2,
   AlertTriangle,
   Send,
   Lock,
@@ -8,6 +9,8 @@ import {
   FileText,
   Info,
   Clock,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { ExamDefinition } from '../types/exam';
 
@@ -36,6 +39,8 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
   isSaving,
 }) => {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // Manually expanded state for answered questions
+  const [manuallyExpanded, setManuallyExpanded] = useState<Record<number, boolean>>({});
 
   const nonDeselectableSet = new Set(exam.nonDeselectableQuestions || [6, 7, 8, 9, 12, 16, 20, 28]);
   const deselectedCount = deselected.length;
@@ -47,6 +52,26 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
   }).length;
 
   const isDeselectTargetReached = deselectedCount === exam.maxDeselections;
+  const progressPercentage = Math.min(100, Math.round((answeredCount / exam.requiredQuestions) * 100));
+
+  const toggleExpand = (qNum: number) => {
+    setManuallyExpanded((prev) => ({
+      ...prev,
+      [qNum]: !prev[qNum],
+    }));
+  };
+
+  const expandAll = () => {
+    const all: Record<number, boolean> = {};
+    for (let i = 1; i <= exam.totalQuestions; i++) {
+      all[i] = true;
+    }
+    setManuallyExpanded(all);
+  };
+
+  const collapseAll = () => {
+    setManuallyExpanded({});
+  };
 
   const handleOpenConfirm = () => {
     setShowConfirmModal(true);
@@ -55,6 +80,23 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
   const handleConfirmSubmit = () => {
     setShowConfirmModal(false);
     onSubmitExam();
+  };
+
+  const handleSelectOptionWithAutoCollapse = (qNum: number, opt: number) => {
+    onSelectAnswer(qNum, opt);
+    // After answering, collapse smoothly if it was manually expanded
+    setManuallyExpanded((prev) => ({
+      ...prev,
+      [qNum]: false,
+    }));
+  };
+
+  const handleToggleDeselectWithCollapse = (qNum: number) => {
+    onToggleDeselect(qNum);
+    setManuallyExpanded((prev) => ({
+      ...prev,
+      [qNum]: false,
+    }));
   };
 
   return (
@@ -123,18 +165,83 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
         </div>
       </div>
 
+      {/* FORTSCHRITTSBALKEN: X / Y Fragen beantwortet */}
+      <div className="bg-white px-3 sm:px-4 py-2.5 border-b border-slate-200 shrink-0 space-y-1.5 shadow-xs">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-extrabold text-slate-800 flex items-center gap-1.5">
+            <span>Fortschritt:</span>
+            <span className="text-sbsz-blue font-black font-mono text-sm">
+              {answeredCount} / {exam.requiredQuestions}
+            </span>
+            <span className="text-slate-600 font-medium">Fragen beantwortet</span>
+          </span>
+
+          <span className="font-extrabold font-mono text-sbsz-darkBlue bg-sbsz-lightBlue px-2 py-0.5 rounded-lg border border-sbsz-borderBlue">
+            {progressPercentage}%
+          </span>
+        </div>
+
+        {/* Visueller Fortschrittsbalken */}
+        <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200 shadow-inner">
+          <div
+            className={`h-full rounded-full transition-all duration-300 ${
+              answeredCount >= 25
+                ? 'bg-gradient-to-r from-emerald-500 to-sbsz-lime shadow-sm'
+                : 'bg-gradient-to-r from-sbsz-blue to-sbsz-cyan'
+            }`}
+            style={{ width: `${progressPercentage}%` }}
+          />
+        </div>
+
+        {/* Sub-bar: Status & Schnellumschalter Einklappen / Aufklappen */}
+        <div className="flex items-center justify-between text-[11px] pt-0.5">
+          <div>
+            {answeredCount >= 25 ? (
+              <span className="text-emerald-700 font-bold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                Alle 25 erforderlichen Fragen beantwortet!
+              </span>
+            ) : (
+              <span className="text-slate-500">
+                Noch <strong className="text-slate-700">{25 - answeredCount}</strong> Frage(n) erforderlich
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 text-slate-500">
+            <button
+              type="button"
+              onClick={expandAll}
+              className="text-sbsz-blue hover:text-sbsz-darkBlue font-bold hover:underline"
+              title="Alle Fragen aufklappen"
+            >
+              Alle aufklappen
+            </button>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={collapseAll}
+              className="text-slate-500 hover:text-slate-800 font-bold hover:underline"
+              title="Beantwortete Fragen einklappen"
+            >
+              Beantwortete einklappen
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Official Rule Notice */}
-      <div className="bg-sbsz-lightBlue border-b border-sbsz-borderBlue px-3 py-2 text-xs text-sbsz-darkBlue flex items-start gap-2 shrink-0">
-        <Info className="w-4 h-4 text-sbsz-blue shrink-0 mt-0.5" />
-        <p className="leading-snug">
-          <strong>IHK-Vorgabe:</strong> 25 von 28 Aufgaben müssen gewertet werden. 3 Aufgaben können Sie über{' '}
-          <span className="font-mono font-bold bg-amber-200 text-amber-950 px-1 py-0.5 rounded text-[11px]">[A]</span>{' '}
-          abwählen. 8 markierte Aufgaben (🔒) sind nicht abwählbar!
+      <div className="bg-sbsz-lightBlue border-b border-sbsz-borderBlue px-3 py-1.5 text-xs text-sbsz-darkBlue flex items-start gap-2 shrink-0">
+        <Info className="w-3.5 h-3.5 text-sbsz-blue shrink-0 mt-0.5" />
+        <p className="leading-snug text-[11px]">
+          <strong>IHK-Vorgabe:</strong> 25 von 28 Aufgaben werden gewertet. 3 Aufgaben können Sie über{' '}
+          <span className="font-mono font-bold bg-amber-200 text-amber-950 px-1 py-0.2 rounded text-[11px]">[A]</span>{' '}
+          abwählen. Beantwortete Fragen klappen automatisch ein.
         </p>
       </div>
 
       {/* Scrollable Questions Grid */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2.5">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2">
         {Array.from({ length: exam.totalQuestions }, (_, i) => i + 1).map((qNum) => {
           const isNonDeselectable = nonDeselectableSet.has(qNum);
           const isDeselected = deselected.includes(qNum);
@@ -143,12 +250,82 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
           const pageNumber = qDef?.pageNumber || 3;
           const hasDrawing = qDef?.drawingPage !== undefined;
 
+          const isAnswered = selectedOption !== undefined || isDeselected;
+          const isCollapsed = isAnswered && !manuallyExpanded[qNum];
+
+          // ========================================================
+          // EINGEKLAPPTE ZEILE (Kompakt für beantwortete Fragen)
+          // ========================================================
+          if (isCollapsed) {
+            return (
+              <div
+                key={qNum}
+                onClick={() => toggleExpand(qNum)}
+                className="p-2.5 sm:px-3 rounded-xl border border-slate-200 bg-white hover:border-sbsz-blue hover:bg-sbsz-lightBlue/40 transition-all cursor-pointer shadow-xs flex items-center justify-between gap-2 group animate-fade-in"
+              >
+                {/* Left: Number, Topic & Page */}
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${
+                      isNonDeselectable
+                        ? 'bg-sbsz-darkBlue text-white shadow-inner'
+                        : 'bg-slate-100 text-slate-700'
+                    }`}
+                  >
+                    {qNum}
+                  </div>
+
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="text-xs font-semibold text-slate-800 truncate">
+                      {qDef?.topic || `Aufgabe ${qNum}`}
+                    </span>
+                    {isNonDeselectable && (
+                      <span className="hidden sm:inline-flex items-center gap-0.5 bg-slate-100 text-slate-600 text-[10px] px-1.5 py-0.2 rounded font-medium">
+                        <Lock className="w-2.5 h-2.5" /> Nicht abwählbar
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Chosen answer badge & "Ändern" Button */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {isDeselected ? (
+                    <span className="bg-amber-400 text-slate-950 font-black text-xs px-2.5 py-0.5 rounded-lg border border-amber-500 shadow-xs">
+                      [A] Abgewählt
+                    </span>
+                  ) : (
+                    <span className="bg-sbsz-blue text-white font-black text-xs px-2.5 py-0.5 rounded-lg shadow-xs flex items-center gap-1">
+                      <span>Option {selectedOption}</span>
+                      <CheckCircle2 className="w-3.5 h-3.5 text-sbsz-lime" />
+                    </span>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleExpand(qNum);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-sbsz-lightBlue text-sbsz-darkBlue font-semibold text-xs flex items-center gap-1 border border-slate-200 transition-colors"
+                    title="Antwort ansehen oder ändern"
+                  >
+                    <span>Ändern</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-500 group-hover:text-sbsz-blue" />
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // ========================================================
+          // AUSGEKLAPPTE KARTE (Optionen 1-5 & Abwahl sichtbar)
+          // ========================================================
           return (
             <div
               key={qNum}
-              className={`p-2.5 sm:p-3 rounded-2xl border transition-all ${
+              className={`p-3 rounded-2xl border transition-all ${
                 isDeselected
-                  ? 'bg-amber-50/70 border-amber-300 opacity-70'
+                  ? 'bg-amber-50/70 border-amber-300 opacity-90'
                   : selectedOption !== undefined
                   ? 'bg-sbsz-lightBlue/60 border-sbsz-borderBlue shadow-sm'
                   : 'bg-white border-slate-200 hover:border-slate-300'
@@ -175,13 +352,13 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
                   )}
 
                   {qDef?.topic && (
-                    <span className="text-xs text-slate-500 truncate max-w-[130px] sm:max-w-[180px] hidden sm:inline">
+                    <span className="text-xs text-slate-600 truncate max-w-[130px] sm:max-w-[200px]">
                       {qDef.topic}
                     </span>
                   )}
                 </div>
 
-                {/* Right controls: Page jumping & Drawing quick button */}
+                {/* Right controls: Page jumping, Drawing quick button, Einklappen Button */}
                 <div className="flex items-center gap-1">
                   {hasDrawing && (
                     <button
@@ -202,6 +379,17 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
                     <FileText className="w-3 h-3 text-sbsz-blue" />
                     <span>S. {pageNumber}</span>
                   </button>
+
+                  {isAnswered && (
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(qNum)}
+                      className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors ml-1"
+                      title="Frage wieder einklappen"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -216,7 +404,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
                         key={opt}
                         type="button"
                         disabled={isDeselected}
-                        onClick={() => onSelectAnswer(qNum, opt)}
+                        onClick={() => handleSelectOptionWithAutoCollapse(qNum, opt)}
                         className={`h-11 sm:h-10 rounded-xl font-bold text-sm sm:text-base flex items-center justify-center transition-all select-none ${
                           isSelected
                             ? 'bg-sbsz-blue text-white ring-2 ring-sbsz-blue ring-offset-1 shadow-md scale-105 font-black'
@@ -235,7 +423,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
                 {!isNonDeselectable ? (
                   <button
                     type="button"
-                    onClick={() => onToggleDeselect(qNum)}
+                    onClick={() => handleToggleDeselectWithCollapse(qNum)}
                     className={`h-11 sm:h-10 px-2.5 sm:px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1 transition-all ${
                       isDeselected
                         ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-400 ring-offset-1 shadow-md font-black'
