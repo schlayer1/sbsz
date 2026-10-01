@@ -18,6 +18,11 @@ import {
   Database,
   Key,
   Copy,
+  Lock,
+  Unlock,
+  FolderSync,
+  FolderOpen,
+  Trash2,
 } from 'lucide-react';
 import {
   ExamDefinition,
@@ -29,6 +34,7 @@ import {
 import {
   getExams,
   saveExam,
+  deleteExam,
   getAllStudents,
   getAllSubmissions,
   sendFeedbackToStudent,
@@ -41,6 +47,15 @@ import {
   getActiveGeminiApiKey,
   saveTeacherGeminiApiKey,
 } from '../services/gemini';
+import {
+  fetchDriveFolderFiles,
+  pairExamFiles,
+  getActiveDriveFolderId,
+  saveActiveDriveFolderId,
+  getActiveDriveApiKey,
+  saveActiveDriveApiKey,
+  DiscoveredExamBundle,
+} from '../services/googleDrive';
 
 interface TeacherDashboardProps {
   onSelectExamForPreview: (exam: ExamDefinition) => void;
@@ -85,6 +100,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [geminiKeyInput, setGeminiKeyInput] = useState('');
   const [configSavedNotice, setConfigSavedNotice] = useState(false);
 
+  // Google Drive Sync States
+  const [driveFolderId, setDriveFolderId] = useState('');
+  const [driveApiKey, setDriveApiKey] = useState('');
+  const [isSyncingDrive, setIsSyncingDrive] = useState(false);
+  const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
+  const [driveSyncSuccess, setDriveSyncSuccess] = useState<string | null>(null);
+  const [discoveredBundles, setDiscoveredBundles] = useState<DiscoveredExamBundle[]>([]);
+
   // Load all data
   const loadData = async () => {
     setIsLoading(true);
@@ -103,6 +126,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       const activeGeminiKey = getActiveGeminiApiKey();
       if (activeGeminiKey) setGeminiKeyInput(activeGeminiKey);
+
+      setDriveFolderId(getActiveDriveFolderId());
+      setDriveApiKey(getActiveDriveApiKey());
     } catch (err) {
       console.error('Fehler beim Laden der Dashboard-Daten:', err);
     } finally {
@@ -185,6 +211,21 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     await loadData();
   };
 
+  const handleToggleExamActive = async (exam: ExamDefinition) => {
+    const updatedExam: ExamDefinition = {
+      ...exam,
+      isActive: !exam.isActive,
+    };
+    await saveExam(updatedExam);
+    setExams((prev) => prev.map((e) => (e.id === exam.id ? updatedExam : e)));
+  };
+
+  const handleDeleteExam = async (examId: string) => {
+    if (!window.confirm('Möchtest du diesen Prüfungsbogen wirklich unwiderruflich löschen?')) return;
+    await deleteExam(examId);
+    setExams((prev) => prev.filter((e) => e.id !== examId));
+  };
+
   const handleToggleClassAssignment = async (exam: ExamDefinition, cls: string) => {
     let updatedClasses = [...exam.assignedClasses];
     if (updatedClasses.includes(cls)) {
@@ -197,12 +238,86 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setExams((prev) => prev.map((e) => (e.id === exam.id ? updatedExam : e)));
   };
 
+  const handleSyncGoogleDrive = async () => {
+    setIsSyncingDrive(true);
+    setDriveSyncError(null);
+    setDriveSyncSuccess(null);
+    try {
+      saveActiveDriveFolderId(driveFolderId);
+      saveActiveDriveApiKey(driveApiKey);
+
+      const files = await fetchDriveFolderFiles(driveFolderId, driveApiKey);
+      const bundles = pairExamFiles(files);
+      setDiscoveredBundles(bundles);
+
+      if (bundles.length === 0) {
+        setDriveSyncSuccess('Ordner erfolgreich gescannt: Keine neuen PDF-Prüfungsbögen gefunden.');
+      } else {
+        setDriveSyncSuccess(
+          `Erfolgreich synchronisiert! ${bundles.length} Prüfungsheft(e) im Google Drive Ordner entdeckt.`
+        );
+      }
+    } catch (err: any) {
+      console.error('Google Drive Sync Fehler:', err);
+      setDriveSyncError(err?.message || 'Fehler beim Synchronisieren mit Google Drive.');
+    } finally {
+      setIsSyncingDrive(false);
+    }
+  };
+
+  const handleImportDiscoveredExam = async (bundle: DiscoveredExamBundle) => {
+    const existing = exams.find((e) => e.id === bundle.id);
+    if (existing) {
+      alert('Dieser Prüfungsbogen ist bereits im Portal hinterlegt.');
+      return;
+    }
+
+    const newExam: ExamDefinition = {
+      id: bundle.id,
+      title: bundle.title,
+      subtitle: `Google Drive Synchronisation (${bundle.taskPdfFile.name})`,
+      examCode: bundle.examCode,
+      profession: 'Zerspanungsmechaniker/-in',
+      subject: 'IHK Abschlussprüfung Teil 2',
+      season: 'Aktuell',
+      totalQuestions: 28,
+      requiredQuestions: 25,
+      maxDeselections: 3,
+      nonDeselectableQuestions: [6, 7, 8, 9, 12, 16, 20, 28],
+      pageCount: 12,
+      pdfUrl: bundle.previewUrl,
+      solutionPdfUrl: bundle.solutionPreviewUrl,
+      assignedClasses: ['Alle'],
+      assignedStudents: [],
+      isActive: true, // Direkt freigeschaltet
+      createdAt: Date.now(),
+      createdBy: 'Fachlehrer (Google Drive Sync)',
+      questions: Array.from({ length: 28 }, (_, i) => ({
+        number: i + 1,
+        isNonDeselectable: [6, 7, 8, 9, 12, 16, 20, 28].includes(i + 1),
+        pageNumber: i < 3 ? 3 : i < 7 ? 4 : i < 11 ? 5 : i < 15 ? 6 : i < 20 ? 7 : i < 23 ? 8 : 11,
+        topic: `IHK Aufgabe ${i + 1}`,
+      })),
+      solutions: {}, // Musterlösungen
+    };
+
+    await saveExam(newExam);
+    setExams((prev) => [newExam, ...prev]);
+    alert(`Prüfungsbogen "${bundle.title}" wurde erfolgreich angelegt und für Schüler freigeschaltet!`);
+  };
+
   const handleSaveConfig = () => {
     if (fbConfig.projectId && fbConfig.apiKey) {
       saveCustomFirebaseConfig(fbConfig);
     }
     if (geminiKeyInput.trim()) {
       saveTeacherGeminiApiKey(geminiKeyInput.trim());
+    }
+    if (driveFolderId.trim()) {
+      saveActiveDriveFolderId(driveFolderId);
+    }
+    if (driveApiKey.trim()) {
+      saveActiveDriveApiKey(driveApiKey);
     }
     setConfigSavedNotice(true);
     setTimeout(() => setConfigSavedNotice(false), 3000);
@@ -517,12 +632,104 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 2: PRÜFUNGSBÖGEN VERWALTEN */}
+      {/* TAB 2: PRÜFUNGSBÖGEN VERWALTEN & GOOGLE DRIVE SYNCHRONISATION */}
       {activeTab === 'exams' && (
-        <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Google Drive Synchronisations-Box */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-extrabold text-slate-900 text-base flex items-center gap-2">
+                  <FolderSync className="w-5 h-5 text-sbsz-blue" />
+                  <span>Automatische Google Drive Ordner-Synchronisation</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Liest automatisch neue IHK-Aufgaben- & Lösungshefte aus deinem Google Drive Ordner aus.
+                </p>
+              </div>
+
+              <button
+                onClick={handleSyncGoogleDrive}
+                disabled={isSyncingDrive}
+                className="bg-sbsz-blue hover:bg-sbsz-darkBlue text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncingDrive ? 'animate-spin' : ''}`} />
+                <span>{isSyncingDrive ? 'Synchronisiere Ordner...' : 'Jetzt Ordner synchronisieren'}</span>
+              </button>
+            </div>
+
+            {/* Status Feedback */}
+            {driveSyncSuccess && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{driveSyncSuccess}</span>
+              </div>
+            )}
+
+            {driveSyncError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                <span>{driveSyncError}</span>
+              </div>
+            )}
+
+            {/* Neu gefundene Prüfungshefte im Google Drive Ordner */}
+            {discoveredBundles.length > 0 && (
+              <div className="mt-3 bg-blue-50/60 border border-blue-200 rounded-xl p-4 space-y-3">
+                <div className="text-xs font-bold text-blue-900 uppercase tracking-wide flex items-center gap-1.5">
+                  <FolderOpen className="w-4 h-4 text-blue-600" />
+                  <span>Gefundene Prüfungshefte im Google Drive ({discoveredBundles.length})</span>
+                </div>
+                <div className="space-y-2">
+                  {discoveredBundles.map((bundle) => {
+                    const alreadyImported = exams.some((e) => e.id === bundle.id);
+                    return (
+                      <div
+                        key={bundle.id}
+                        className="bg-white p-3 rounded-lg border border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-800">{bundle.title}</div>
+                          <div className="text-slate-500 text-[11px] mt-0.5">
+                            📄 Aufgabenheft: {bundle.taskPdfFile.name}{' '}
+                            {bundle.solutionPdfFile ? (
+                              <span className="text-emerald-700 font-bold ml-1.5">
+                                ✓ Lösungsheft erkannt ({bundle.solutionPdfFile.name})
+                              </span>
+                            ) : (
+                              <span className="text-amber-700 font-bold ml-1.5">
+                                (Kein separates Lösungsheft erkannt)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {alreadyImported ? (
+                            <span className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg font-bold text-xs">
+                              Bereits importiert
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleImportDiscoveredExam(bundle)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow transition-colors"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Für Schüler freischalten</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-between">
             <h3 className="font-extrabold text-slate-900 text-base">
-              Hinterlegte IHK-Prüfungshefte & Lösungsschlüssel
+              Aktuell hinterlegte IHK-Prüfungshefte ({exams.length})
             </h3>
           </div>
 
@@ -537,13 +744,29 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     <span className="bg-sbsz-lightBlue text-sbsz-darkBlue border border-sbsz-borderBlue text-xs font-bold px-2.5 py-0.5 rounded-full">
                       {exam.examCode}
                     </span>
-                    <span
-                      className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
-                        exam.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'
+                    
+                    {/* Status & Freigabeschalter */}
+                    <button
+                      onClick={() => handleToggleExamActive(exam)}
+                      className={`text-xs px-3 py-1 rounded-full font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+                        exam.isActive
+                          ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300'
+                          : 'bg-rose-100 hover:bg-rose-200 text-rose-800 border border-rose-300'
                       }`}
+                      title={exam.isActive ? 'Klicken zum Sperren' : 'Klicken zum Freigeben'}
                     >
-                      {exam.isActive ? 'Aktiv geschaltet' : 'Gesperrt'}
-                    </span>
+                      {exam.isActive ? (
+                        <>
+                          <Unlock className="w-3.5 h-3.5 text-emerald-700" />
+                          <span>Aktiv geschaltet (Freigegeben)</span>
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-3.5 h-3.5 text-rose-700" />
+                          <span>Gesperrt (Für Schüler unsichtbar)</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
                   <h4 className="font-extrabold text-base text-slate-900 mt-2">{exam.title}</h4>
@@ -559,7 +782,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       {exam.nonDeselectableQuestions?.join(', ')}
                     </div>
                     <div>
-                      <strong>Lösungsschlüssel:</strong> Vollständig hinterlegt (28 Aufgaben)
+                      <strong>Lösungsschlüssel:</strong> {exam.solutionPdfUrl ? 'Lösungs-PDF hinterlegt' : 'Standard 28 Aufgaben hinterlegt'}
                     </div>
                   </div>
                 </div>
@@ -607,6 +830,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   >
                     <ExternalLink className="w-4 h-4" />
                   </a>
+                  {exams.length > 1 && (
+                    <button
+                      onClick={() => handleDeleteExam(exam.id)}
+                      className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl transition-colors"
+                      title="Prüfungsbogen entfernen"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -851,6 +1083,28 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   placeholder="Eigener Key oder Schul-Standardschlüssel"
                   value={geminiKeyInput}
                   onChange={(e) => setGeminiKeyInput(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Google Drive Ordner-ID (Auto-Sync)</label>
+                <input
+                  type="text"
+                  placeholder="z. B. 1AbCdEfGhIjKlMnOpQrStUvWxYz..."
+                  value={driveFolderId}
+                  onChange={(e) => setDriveFolderId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Google Cloud / Drive API Key</label>
+                <input
+                  type="password"
+                  placeholder="AIzaSy... (oder leer lassen, nutzt Firebase Key)"
+                  value={driveApiKey}
+                  onChange={(e) => setDriveApiKey(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono"
                 />
               </div>

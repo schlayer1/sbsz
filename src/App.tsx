@@ -343,8 +343,63 @@ export function App() {
               </button>
             </div>
 
+            {/* Exam Selection Header Bar */}
+            <div className="bg-white border-b border-slate-200 px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-sbsz-lightBlue text-sbsz-darkBlue flex items-center justify-center shrink-0">
+                  <BookOpen className="w-4 h-4 text-sbsz-blue" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
+                    Prüfungsheft auswählen:
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={activeExam.id}
+                      onChange={(e) => {
+                        const found = exams.find((x) => x.id === e.target.value);
+                        if (found) {
+                          setActiveExam(found);
+                          setCurrentPage(3);
+                        }
+                      }}
+                      className="text-xs sm:text-sm font-extrabold text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-sbsz-blue cursor-pointer truncate max-w-[280px] sm:max-w-md"
+                    >
+                      {exams
+                        .filter((ex) => {
+                          // Nur aktive Bögen anzeigen, die für die Klasse des Schülers freigegeben sind
+                          if (!ex.isActive) return false;
+                          if (!currentStudent) return true;
+                          return (
+                            ex.assignedClasses.includes('Alle') ||
+                            ex.assignedClasses.includes(currentStudent.className)
+                          );
+                        })
+                        .map((ex) => (
+                          <option key={ex.id} value={ex.id}>
+                            {ex.examCode ? `[${ex.examCode}] ` : ''}{ex.title}
+                          </option>
+                        ))}
+                    </select>
+
+                    <span className="hidden sm:inline-block bg-slate-100 text-slate-600 text-[11px] font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                      {activeExam.subject}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="hidden md:inline">Status:</span>
+                <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold px-2.5 py-0.5 rounded-full text-[11px] flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  Freigegeben
+                </span>
+              </div>
+            </div>
+
             {/* Split Screen Workbench Layout */}
-            <div className="flex-1 w-full max-w-[2100px] mx-auto p-2 sm:p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch h-[calc(100vh-80px)]">
+            <div className="flex-1 w-full max-w-[2100px] mx-auto p-2 sm:p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch h-[calc(100vh-130px)]">
               {/* Left Column: PDF Viewer */}
               <div
                 className={`lg:col-span-6 xl:col-span-7 2xl:col-span-7 h-full ${
