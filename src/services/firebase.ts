@@ -193,9 +193,57 @@ function saveExamToLocal(exam: ExamDefinition): void {
   } catch {}
 }
 
+import { generateStudentCode, formatStudentCode } from '../utils/studentCode';
+
 // ==========================================
-// SCHÜLER (STUDENTS) CRUD & AUTH
+// SCHÜLER (STUDENTS) CRUD & AUTH (school-student-auth Standard)
 // ==========================================
+
+export async function loginWithStudentCode(rawCode: string): Promise<StudentProfile> {
+  const code = formatStudentCode(rawCode);
+  if (!code) {
+    throw new Error('Bitte ein gültiges Kürzel eingeben.');
+  }
+
+  // 1. Zuerst im lokalen Cache prüfen
+  const localStudents = getLocalStudents();
+  let student = localStudents.find(
+    (s) => formatStudentCode(s.studentCode) === code || s.id.toUpperCase() === code
+  );
+
+  // 2. In Firestore suchen
+  if (db) {
+    try {
+      const colRef = collection(db, STUDENTS_COLLECTION);
+      const q = query(colRef, where('studentCode', '==', code));
+      const snap = await getDocs(q);
+
+      if (!snap.empty) {
+        student = snap.docs[0].data() as StudentProfile;
+      }
+    } catch (err) {
+      console.warn('[Firebase] Fehler bei der Kürzelsuche in Firestore:', err);
+    }
+  }
+
+  if (!student) {
+    throw new Error(`Das Kürzel "${code}" wurde nicht gefunden. Bitte prüfe die Schreibweise oder lege ein neues Kürzel an.`);
+  }
+
+  const now = Date.now();
+  student = { ...student, lastLoginAt: now };
+
+  saveStudentToLocal(student);
+  localStorage.setItem(CURRENT_STUDENT_SESSION_KEY, JSON.stringify(student));
+
+  if (db) {
+    try {
+      await setDoc(doc(db, STUDENTS_COLLECTION, student.id), student, { merge: true });
+    } catch {}
+  }
+
+  return student;
+}
 
 export async function loginOrCreateStudent(
   firstName: string,
@@ -205,15 +253,21 @@ export async function loginOrCreateStudent(
   const cleanFirst = firstName.trim();
   const cleanLast = lastName.trim();
   const cleanClass = className.trim().toUpperCase();
+  const fullName = `${cleanFirst} ${cleanLast}`.trim();
 
-  // Eindeutige ID basierend auf Name und Klasse
+  // Deterministisches 4-stelliges Kürzel nach school-student-auth Standard (z. B. LMUE)
+  const studentCode = generateStudentCode(fullName);
+
+  // Eindeutige ID
   const studentId = `s_${cleanLast.toLowerCase().replace(/[^a-z0-9]/g, '')}_${cleanFirst.toLowerCase().replace(/[^a-z0-9]/g, '')}_${cleanClass.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
   const now = Date.now();
   let student: StudentProfile = {
     id: studentId,
+    studentCode,
     firstName: cleanFirst,
     lastName: cleanLast,
+    fullName,
     className: cleanClass,
     createdAt: now,
     lastLoginAt: now,
@@ -221,7 +275,9 @@ export async function loginOrCreateStudent(
 
   // Lokal prüfen
   const localStudents = getLocalStudents();
-  const existingLocal = localStudents.find((s) => s.id === studentId);
+  const existingLocal = localStudents.find(
+    (s) => s.id === studentId || formatStudentCode(s.studentCode) === studentCode
+  );
   if (existingLocal) {
     student = { ...existingLocal, lastLoginAt: now };
   }

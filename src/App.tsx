@@ -15,6 +15,7 @@ import {
 import {
   getCurrentStudentSession,
   loginOrCreateStudent,
+  loginWithStudentCode,
   logoutCurrentStudent,
   getExams,
   getStudentSubmission,
@@ -106,6 +107,7 @@ export function App() {
         id: subId,
         examId: activeExam.id,
         studentId: currentStudent.id,
+        studentCode: currentStudent.studentCode || '',
         studentName: `${currentStudent.firstName} ${currentStudent.lastName}`,
         className: currentStudent.className,
         answers: newAnswers,
@@ -187,6 +189,7 @@ export function App() {
       id: subId,
       examId: activeExam.id,
       studentId: currentStudent.id,
+      studentCode: currentStudent.studentCode || '',
       studentName: `${currentStudent.firstName} ${currentStudent.lastName}`,
       className: currentStudent.className,
       answers,
@@ -214,8 +217,15 @@ export function App() {
     }
   };
 
-  // Student Auth Handlers
-  const handleStudentLogin = async (firstName: string, lastName: string, className: string) => {
+  // Student Auth Handlers according to school-student-auth skill
+  const handleLoginWithCode = async (code: string) => {
+    const student = await loginWithStudentCode(code);
+    setCurrentStudent(student);
+    const updatedList = await getAllStudents();
+    setCachedStudents(updatedList);
+  };
+
+  const handleRegisterStudent = async (firstName: string, lastName: string, className: string) => {
     const student = await loginOrCreateStudent(firstName, lastName, className);
     setCurrentStudent(student);
     const updatedList = await getAllStudents();
@@ -376,7 +386,8 @@ export function App() {
       <StudentAuthModal
         isOpen={showStudentModal}
         onClose={() => setShowStudentModal(false)}
-        onLogin={handleStudentLogin}
+        onLoginWithCode={handleLoginWithCode}
+        onRegisterStudent={handleRegisterStudent}
         cachedStudents={cachedStudents}
       />
 

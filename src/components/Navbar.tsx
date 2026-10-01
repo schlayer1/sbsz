@@ -108,6 +108,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="font-bold">
                   {currentStudent.firstName} {currentStudent.lastName}
                 </span>
+                <span
+                  className="bg-amber-400 text-slate-950 text-[11px] px-1.5 py-0.5 rounded font-mono font-black"
+                  title="Dein Login-Kürzel"
+                >
+                  {currentStudent.studentCode || '—'}
+                </span>
                 <span className="bg-white/20 text-white text-[11px] px-1.5 py-0.5 rounded font-mono font-bold">
                   {currentStudent.className}
                 </span>

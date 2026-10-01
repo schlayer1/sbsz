@@ -32,8 +32,10 @@ export interface ExamDefinition {
 
 export interface StudentProfile {
   id: string;
+  studentCode: string; // 4-stelliges mnemonisches Kürzel (z. B. LMUE)
   firstName: string;
   lastName: string;
+  fullName: string;
   className: string;
   createdAt: number;
   lastLoginAt: number;
@@ -80,6 +82,7 @@ export interface ExamSubmission {
   id: string;
   examId: string;
   studentId: string;
+  studentCode: string; // z. B. LMUE
   studentName: string;
   className: string;
   answers: Record<number, number>; // Aufgabe -> Ausgewählte Option (1-5)

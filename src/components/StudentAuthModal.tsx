@@ -1,43 +1,82 @@
-import React, { useState } from 'react';
-import { User, ArrowRight, X, AlertCircle, Check } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { User, Key, UserPlus, X, AlertCircle, Check, ArrowRight, ShieldCheck } from 'lucide-react';
 import { StudentProfile } from '../types/exam';
+import { generateStudentCode, formatStudentCode } from '../utils/studentCode';
 
 interface StudentAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLogin: (firstName: string, lastName: string, className: string) => Promise<void>;
+  onLoginWithCode: (code: string) => Promise<void>;
+  onRegisterStudent: (firstName: string, lastName: string, className: string) => Promise<void>;
   cachedStudents: StudentProfile[];
 }
 
 export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
   isOpen,
   onClose,
-  onLogin,
+  onLoginWithCode,
+  onRegisterStudent,
   cachedStudents,
 }) => {
+  // Tab 1: "Ich habe ein Kürzel" (Default/Primär) | Tab 2: "Neues Kürzel anlegen"
+  const [activeTab, setActiveTab] = useState<'code' | 'register'>('code');
+
+  // Input states
+  const [code, setCode] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [className, setClassName] = useState('ZM22A');
+
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Live preview for generated code according to school-student-auth
+  const previewCode = useMemo(() => {
+    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+    if (!fullName) return '';
+    return generateStudentCode(fullName);
+  }, [firstName, lastName]);
+
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Handler Tab 1: Code Login
+  const handleCodeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!firstName.trim() || !lastName.trim() || !className.trim()) {
-      setError('Bitte Vorname, Nachname und Klasse vollständig ausfüllen.');
+    const cleanCode = formatStudentCode(code);
+    if (!cleanCode) {
+      setError('Bitte gib dein 4-stelliges Schüler-Kürzel ein (z. B. LMUE).');
       return;
     }
 
     try {
       setIsSubmitting(true);
-      await onLogin(firstName, lastName, className);
+      await onLoginWithCode(cleanCode);
       onClose();
     } catch (err: any) {
-      setError(err?.message || 'Fehler bei der Anmeldung.');
+      setError(err?.message || 'Kürzel nicht gefunden.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handler Tab 2: Register & Generate
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!firstName.trim() || !lastName.trim() || !className.trim()) {
+      setError('Bitte Vorname, Nachname und Klasse vollständig eingeben.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await onRegisterStudent(firstName, lastName, className);
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || 'Fehler bei der Registrierung.');
     } finally {
       setIsSubmitting(false);
     }
@@ -46,9 +85,9 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
   const handleSelectRecent = async (s: StudentProfile) => {
     try {
       setIsSubmitting(true);
-      await onLogin(s.firstName, s.lastName, s.className);
+      await onLoginWithCode(s.studentCode || s.id);
       onClose();
-    } catch (err: any) {
+    } catch {
       setError('Fehler bei der Schnell-Anmeldung.');
     } finally {
       setIsSubmitting(false);
@@ -58,7 +97,7 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-sbsz-navy/70 backdrop-blur-sm animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
-        {/* Header with SBSZ Blue */}
+        {/* Header */}
         <div className="bg-sbsz-blue p-5 text-white flex items-center justify-between border-b border-sbsz-darkBlue">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-white p-1 flex items-center justify-center shadow shrink-0">
@@ -66,7 +105,7 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
             </div>
             <div>
               <h3 className="font-extrabold text-base sm:text-lg">SBSZ Jena-Göschwitz</h3>
-              <p className="text-xs text-blue-100">Prüfungsportal • Schüleranmeldung</p>
+              <p className="text-xs text-blue-100">Schüler-Login & Kürzel-System</p>
             </div>
           </div>
           <button
@@ -77,8 +116,43 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-5 sm:p-6 space-y-5 bg-white">
+        {/* Dual Tab Navigation according to school-student-auth */}
+        <div className="grid grid-cols-2 p-1.5 bg-slate-100 border-b border-slate-200 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('code');
+              setError(null);
+            }}
+            className={`py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all ${
+              activeTab === 'code'
+                ? 'bg-white text-sbsz-darkBlue shadow font-extrabold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Key className="w-4 h-4 text-sbsz-blue" />
+            <span>Ich habe ein Kürzel</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('register');
+              setError(null);
+            }}
+            className={`py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all ${
+              activeTab === 'register'
+                ? 'bg-white text-sbsz-darkBlue shadow font-extrabold'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <UserPlus className="w-4 h-4 text-sbsz-red" />
+            <span>Neues Kürzel anlegen</span>
+          </button>
+        </div>
+
+        {/* Content Body */}
+        <div className="p-5 sm:p-6 space-y-4 bg-white">
           {error && (
             <div className="bg-sbsz-lightRed border border-red-200 text-sbsz-darkRed text-xs sm:text-sm p-3 rounded-xl flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0 text-sbsz-red" />
@@ -86,119 +160,159 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
             </div>
           )}
 
-          {/* Quick Login if previously logged in */}
-          {cachedStudents.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Zuletzt auf diesem Gerät angemeldet:
-              </label>
-              <div className="grid grid-cols-1 gap-2 max-h-36 overflow-y-auto">
-                {cachedStudents.slice(0, 3).map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => handleSelectRecent(s)}
-                    disabled={isSubmitting}
-                    className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:border-sbsz-blue hover:bg-sbsz-lightBlue text-left transition-all group"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-sbsz-blue text-white flex items-center justify-center font-bold text-xs shadow-inner">
-                        {s.firstName[0]}
-                        {s.lastName[0]}
-                      </div>
-                      <div>
-                        <div className="text-sm font-bold text-slate-800">
-                          {s.firstName} {s.lastName}
-                        </div>
-                        <div className="text-xs text-slate-500">Klasse {s.className}</div>
-                      </div>
-                    </div>
-                    <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-sbsz-blue transition-colors" />
-                  </button>
-                ))}
+          {/* TAB 1: CODE LOGIN (DEFAULT) */}
+          {activeTab === 'code' ? (
+            <form onSubmit={handleCodeSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Dein 4-stelliges Schüler-Kürzel</span>
+                  <span className="text-[11px] font-normal text-slate-400">z. B. LMUE</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    autoFocus
+                    maxLength={10}
+                    placeholder="KÜRZEL"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-300 text-center uppercase tracking-widest text-2xl font-mono font-black text-sbsz-darkBlue focus:outline-none focus:ring-2 focus:ring-sbsz-blue bg-sbsz-lightBlue/30"
+                  />
+                  <Key className="w-5 h-5 text-slate-400 absolute right-3.5 top-3.5 pointer-events-none" />
+                </div>
+                <p className="text-[11px] text-slate-500 mt-2 leading-relaxed">
+                  Trage dein persönliches Kürzel ein, um direkt auf deine Prüfungsbögen zuzugreifen.
+                  Falls du dein Kürzel vergessen hast, kann es deine Lehrkraft im Dashboard einsehen.
+                </p>
               </div>
-              <div className="relative my-3 text-center">
-                <hr className="border-slate-200" />
-                <span className="bg-white px-3 text-xs text-slate-400 absolute left-1/2 -translate-x-1/2 -top-2">
-                  oder neue Anmeldung
-                </span>
-              </div>
-            </div>
-          )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Vorname des Schülers
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="z. B. Max"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sbsz-blue text-sm"
-              />
-            </div>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-sbsz-blue hover:bg-sbsz-darkBlue text-white font-extrabold py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <span>Wird geprüft...</span>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Mit Kürzel anmelden</span>
+                  </>
+                )}
+              </button>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Nachname des Schülers
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="z. B. Mustermann"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sbsz-blue text-sm"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Klasse / Lerngruppe
-              </label>
-              <div className="grid grid-cols-4 gap-2">
-                {['ZM22A', 'ZM22B', 'ZM23', 'ZM24'].map((cls) => (
-                  <button
-                    key={cls}
-                    type="button"
-                    onClick={() => setClassName(cls)}
-                    className={`py-2 text-xs font-bold rounded-lg border text-center transition-all ${
-                      className === cls
-                        ? 'bg-sbsz-blue text-white border-sbsz-blue shadow-sm'
-                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    {cls}
-                  </button>
-                ))}
-              </div>
-              <input
-                type="text"
-                placeholder="Oder freie Klasseneingabe..."
-                value={className}
-                onChange={(e) => setClassName(e.target.value)}
-                className="w-full mt-2 px-3.5 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full mt-2 bg-sbsz-red hover:bg-sbsz-darkRed text-white font-extrabold py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <span>Wird geladen...</span>
-              ) : (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span>Prüfungsportal betreten</span>
-                </>
+              {/* Quick recall list if device was used before */}
+              {cachedStudents.length > 0 && (
+                <div className="pt-3 border-t border-slate-100 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                    Zuletzt auf diesem Gerät:
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {cachedStudents.slice(0, 4).map((s) => (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => handleSelectRecent(s)}
+                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-sbsz-lightBlue hover:border-sbsz-blue text-xs font-mono font-bold text-slate-700 flex items-center gap-1.5 transition-all"
+                      >
+                        <span className="text-sbsz-blue">{s.studentCode || s.id}</span>
+                        <span className="font-sans font-normal text-slate-500 text-[11px]">({s.firstName})</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
-            </button>
-          </form>
+            </form>
+          ) : (
+            /* TAB 2: REGISTER & GENERATE CODE */
+            <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Vorname</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Lukas"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Nachname</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Müller"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
+                  />
+                </div>
+              </div>
+
+              {/* LIVE CODE PREVIEW according to school-student-auth standard */}
+              {previewCode && (
+                <div className="bg-amber-50 border-2 border-amber-300 text-amber-950 rounded-xl p-3 flex items-center justify-between shadow-sm animate-fade-in">
+                  <div>
+                    <div className="text-[10px] uppercase font-bold text-amber-800 tracking-wider">
+                      Dein generiertes Kürzel:
+                    </div>
+                    <div className="text-[11px] text-amber-700">
+                      1. Buchstabe Vorname + 3 Buchstaben Nachname
+                    </div>
+                  </div>
+                  <div className="text-xl font-mono font-black text-sbsz-darkBlue bg-white px-3 py-1 rounded-lg border border-amber-300 shadow-inner">
+                    {previewCode}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Klasse / Ausbildungsjahr
+                </label>
+                <div className="grid grid-cols-4 gap-1.5 mb-1.5">
+                  {['ZM22A', 'ZM22B', 'ZM23', 'ZM24'].map((cls) => (
+                    <button
+                      key={cls}
+                      type="button"
+                      onClick={() => setClassName(cls)}
+                      className={`py-1.5 text-xs font-bold rounded-lg border text-center transition-all ${
+                        className === cls
+                          ? 'bg-sbsz-blue text-white border-sbsz-blue shadow-sm'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {cls}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Oder freie Klassenbezeichnung..."
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full mt-2 bg-sbsz-red hover:bg-sbsz-darkRed text-white font-extrabold py-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <span>Wird registriert...</span>
+                ) : (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span>Kürzel erstellen & Starten</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>

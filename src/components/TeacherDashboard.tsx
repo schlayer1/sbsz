@@ -16,6 +16,8 @@ import {
   ExternalLink,
   Check,
   Database,
+  Key,
+  Copy,
 } from 'lucide-react';
 import {
   ExamDefinition,
@@ -69,6 +71,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [aiFeedbackDraft, setAiFeedbackDraft] = useState<string>('');
   const [aiError, setAiError] = useState<string | null>(null);
   const [feedbackSentSuccess, setFeedbackSentSuccess] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // Firebase Config Form
   const [fbConfig, setFbConfig] = useState<FirebaseCustomConfig>({
@@ -111,12 +114,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     loadData();
   }, []);
 
-  // Filtered submissions
+  // Filtered submissions (Supports searching by Name, Klasse, and 4-stelliges Kürzel nach school-student-auth)
   const filteredSubmissions = submissions.filter((sub) => {
     const matchesClass = selectedClass === 'Alle' || sub.className === selectedClass;
     const matchesSearch =
       searchQuery === '' ||
       sub.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (sub.studentCode || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
       sub.className.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesClass && matchesSearch;
   });
@@ -387,7 +391,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 <table className="w-full text-left text-xs sm:text-sm">
                   <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold border-b border-slate-200">
                     <tr>
-                      <th className="p-3 sm:px-4">Schüler</th>
+                      <th className="p-3 sm:px-4">Schüler & Kürzel</th>
                       <th className="p-3 sm:px-4">Klasse</th>
                       <th className="p-3 sm:px-4">Status</th>
                       <th className="p-3 sm:px-4">Punkte</th>
@@ -403,8 +407,39 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
                       return (
                         <tr key={sub.id} className="hover:bg-slate-50/70 transition-colors">
-                          <td className="p-3 sm:px-4 font-bold text-slate-900">
-                            {sub.studentName}
+                          <td className="p-3 sm:px-4">
+                            <div className="font-bold text-slate-900">{sub.studentName}</div>
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <div className="inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-900 px-2 py-0.5 rounded-md font-mono text-xs font-bold">
+                                <Key className="w-3 h-3 text-amber-700" />
+                                <span>Login: {sub.studentCode || '—'}</span>
+                              </div>
+                              {sub.studentCode && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(sub.studentCode || '');
+                                    setCopiedCode(sub.studentCode);
+                                    setTimeout(() => setCopiedCode(null), 2500);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 hover:text-sbsz-blue hover:bg-blue-50 px-1.5 py-0.5 rounded transition"
+                                  title="Schüler-Kürzel kopieren (um es dem Schüler im Unterricht mitzuteilen)"
+                                >
+                                  {copiedCode === sub.studentCode ? (
+                                    <>
+                                      <Check className="w-3 h-3 text-emerald-600" />
+                                      <span className="text-emerald-700 font-bold">Kopiert!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Copy className="w-3 h-3" />
+                                      <span>Kopieren</span>
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3 sm:px-4">
                             <span className="font-mono bg-sbsz-lightBlue text-sbsz-darkBlue font-bold px-2 py-0.5 rounded text-xs border border-sbsz-borderBlue">
