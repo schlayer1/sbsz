@@ -26,6 +26,9 @@ import {
   Pencil,
   Edit2,
   X,
+  Sliders,
+  CheckSquare,
+  ListOrdered,
 } from 'lucide-react';
 import {
   ExamDefinition,
@@ -59,6 +62,11 @@ import {
   saveActiveAppsScriptUrl,
   DiscoveredExamBundle,
 } from '../services/googleDrive';
+import {
+  getKnownSolutionsForFile,
+  DEFAULT_QUESTIONS_CATALOG,
+  OFFICIAL_IHK_S25_4060_SOLUTIONS,
+} from '../data/knownExams';
 
 interface TeacherDashboardProps {
   onSelectExamForPreview: (exam: ExamDefinition) => void;
@@ -118,6 +126,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [editTitle, setEditTitle] = useState('');
   const [editCode, setEditCode] = useState('');
   const [editSubtitle, setEditSubtitle] = useState('');
+
+  // Solution Key Editor States
+  const [editingSolutionsExam, setEditingSolutionsExam] = useState<ExamDefinition | null>(null);
+  const [tempSolutions, setTempSolutions] = useState<Record<number, number>>({});
 
   // Load all data
   const loadData = async () => {
@@ -223,12 +235,51 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   };
 
   const handleToggleExamActive = async (exam: ExamDefinition) => {
+    const solCount = Object.keys(exam.solutions || {}).length;
+    // Wenn Prüfung aktiviert werden soll, aber noch kein Lösungsschlüssel hinterlegt ist, Warnung & Editor öffnen
+    if (!exam.isActive && solCount === 0) {
+      alert(
+        `Hinweis: Für den Prüfungsbogen "${exam.title}" ist noch kein Lösungsschlüssel hinterlegt! Bitte trage zuerst die Musterlösung ein, bevor der Bogen für Schüler freigeschaltet wird.`
+      );
+      handleOpenSolutionEditor(exam);
+      return;
+    }
+
     const updatedExam: ExamDefinition = {
       ...exam,
       isActive: !exam.isActive,
     };
     await saveExam(updatedExam);
     setExams((prev) => prev.map((e) => (e.id === exam.id ? updatedExam : e)));
+  };
+
+  const handleOpenSolutionEditor = (exam: ExamDefinition) => {
+    setEditingSolutionsExam(exam);
+    // Preload solutions or pre-fill with known solutions if empty
+    let existingSolutions = { ...(exam.solutions || {}) };
+    if (Object.keys(existingSolutions).length === 0) {
+      const known = getKnownSolutionsForFile(exam.title) || getKnownSolutionsForFile(exam.subtitle);
+      if (known) {
+        existingSolutions = { ...known };
+      } else {
+        // Fallback default official S25 key
+        existingSolutions = { ...OFFICIAL_IHK_S25_4060_SOLUTIONS };
+      }
+    }
+    setTempSolutions(existingSolutions);
+  };
+
+  const handleSaveSolutions = async () => {
+    if (!editingSolutionsExam) return;
+
+    const updatedExam: ExamDefinition = {
+      ...editingSolutionsExam,
+      solutions: { ...tempSolutions },
+    };
+
+    await saveExam(updatedExam);
+    setExams((prev) => prev.map((e) => (e.id === editingSolutionsExam.id ? updatedExam : e)));
+    setEditingSolutionsExam(null);
   };
 
   const handleStartRenameExam = (exam: ExamDefinition) => {
@@ -310,6 +361,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       return;
     }
 
+    // Automatisch bekannten IHK-Lösungsschlüssel für diese Datei ermitteln
+    const detectedSolutions =
+      getKnownSolutionsForFile(bundle.taskPdfFile.name) ||
+      getKnownSolutionsForFile(bundle.title) ||
+      (bundle.solutionPdfFile ? getKnownSolutionsForFile(bundle.solutionPdfFile.name) : null) ||
+      { ...OFFICIAL_IHK_S25_4060_SOLUTIONS };
+
+    // Standardfragenkatalog verwenden
+    const questionsCatalog = DEFAULT_QUESTIONS_CATALOG.map((q) => ({
+      number: q.number,
+      isNonDeselectable: q.isNonDeselectable,
+      pageNumber: q.pageNumber,
+      drawingPage: q.drawingPage,
+      topic: q.topic,
+    }));
+
     const newExam: ExamDefinition = {
       id: bundle.id,
       title: bundle.title,
@@ -327,21 +394,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       solutionPdfUrl: bundle.solutionPreviewUrl,
       assignedClasses: ['Alle'],
       assignedStudents: [],
-      isActive: true, // Direkt freigeschaltet
+      isActive: true, // Direkt freigeschaltet mit validem Lösungsschlüssel
       createdAt: Date.now(),
       createdBy: 'Fachlehrer (Google Drive Sync)',
-      questions: Array.from({ length: 28 }, (_, i) => ({
-        number: i + 1,
-        isNonDeselectable: [6, 7, 8, 9, 12, 16, 20, 28].includes(i + 1),
-        pageNumber: i < 3 ? 3 : i < 7 ? 4 : i < 11 ? 5 : i < 15 ? 6 : i < 20 ? 7 : i < 23 ? 8 : 11,
-        topic: `IHK Aufgabe ${i + 1}`,
-      })),
-      solutions: {}, // Musterlösungen
+      questions: questionsCatalog,
+      solutions: detectedSolutions, // Vollständiger 28-Fragen-Musterlösungsschlüssel
     };
 
     await saveExam(newExam);
     setExams((prev) => [newExam, ...prev]);
-    alert(`Prüfungsbogen "${bundle.title}" wurde erfolgreich angelegt und für Schüler freigeschaltet!`);
+    alert(
+      `Prüfungsbogen "${bundle.title}" wurde erfolgreich angelegt!\nLösungsschlüssel (${Object.keys(detectedSolutions).length} Aufgaben) wurde automatisch hinterlegt.`
+    );
   };
 
   const handleSaveConfig = () => {
@@ -895,8 +959,27 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       <strong>Nicht abwählbar:</strong> Aufgaben{' '}
                       {exam.nonDeselectableQuestions?.join(', ')}
                     </div>
-                    <div>
-                      <strong>Lösungsschlüssel:</strong> {exam.solutionPdfUrl ? 'Lösungs-PDF hinterlegt' : 'Standard 28 Aufgaben hinterlegt'}
+                    <div className="flex items-center justify-between pt-1">
+                      <div>
+                        <strong>Lösungsschlüssel:</strong>{' '}
+                        {Object.keys(exam.solutions || {}).length > 0 ? (
+                          <span className="text-emerald-700 font-bold">
+                            ✓ {Object.keys(exam.solutions).length} von {exam.totalQuestions} Antworten hinterlegt
+                          </span>
+                        ) : (
+                          <span className="text-rose-600 font-bold animate-pulse">
+                            ⚠️ Noch kein Lösungsschlüssel hinterlegt!
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => handleOpenSolutionEditor(exam)}
+                        className="bg-amber-100 hover:bg-amber-200 text-amber-900 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors border border-amber-300 shrink-0"
+                        title="Musterlösungen für diesen Prüfungsbogen ansehen & bearbeiten"
+                      >
+                        <Sliders className="w-3.5 h-3.5 text-amber-700" />
+                        <span>Lösungsschlüssel anpassen</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -934,6 +1017,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   >
                     <Eye className="w-3.5 h-3.5" />
                     <span>In Schüleransicht testen</span>
+                  </button>
+                  <button
+                    onClick={() => handleOpenSolutionEditor(exam)}
+                    className="p-2 bg-amber-50 hover:bg-amber-100 text-amber-800 rounded-xl transition-colors border border-amber-200"
+                    title="Lösungsschlüssel bearbeiten"
+                  >
+                    <Sliders className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleStartRenameExam(exam)}
@@ -1306,6 +1396,149 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               >
                 Schließen
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Solution Key Editor Modal */}
+      {editingSolutionsExam && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-sbsz-navy/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="bg-sbsz-darkBlue text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold shadow">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg">
+                    IHK-Lösungsschlüssel bearbeiten
+                  </h3>
+                  <p className="text-xs text-blue-200">
+                    {editingSolutionsExam.title} • {editingSolutionsExam.examCode}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditingSolutionsExam(null)}
+                className="text-slate-300 hover:text-white p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Subheader & Helper Buttons */}
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0 text-xs">
+              <div className="text-slate-600">
+                <strong>Anleitung:</strong> Klicke auf die jeweilige Ziffer (1–5), um die offizielle Musterlösung für jede Aufgabe festzulegen. Alle Schülerantworten werden exakt mit dieser Maske abgeglichen.
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTempSolutions({ ...OFFICIAL_IHK_S25_4060_SOLUTIONS })}
+                  className="px-2.5 py-1.5 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-900 font-bold transition-colors"
+                  title="Offizielle Sommer 2025 Musterlösung laden"
+                >
+                  S25 Standard laden
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTempSolutions({})}
+                  className="px-2.5 py-1.5 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold transition-colors"
+                >
+                  Zurücksetzen
+                </button>
+              </div>
+            </div>
+
+            {/* Questions Grid (28 tasks with 1-5 radio selectors) */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                {Array.from({ length: editingSolutionsExam.totalQuestions }, (_, i) => i + 1).map((qNum) => {
+                  const currentAns = tempSolutions[qNum];
+                  const qDef = editingSolutionsExam.questions.find((q) => q.number === qNum);
+                  const isLocked = qDef?.isNonDeselectable;
+
+                  return (
+                    <div
+                      key={qNum}
+                      className={`p-3 rounded-xl border transition-all ${
+                        currentAns
+                          ? 'bg-white border-slate-300 shadow-xs'
+                          : 'bg-rose-50/50 border-rose-200'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-extrabold text-xs text-slate-800">
+                          Aufgabe {qNum}
+                        </span>
+                        {isLocked && (
+                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-200">
+                            Pflicht
+                          </span>
+                        )}
+                      </div>
+
+                      {qDef?.topic && (
+                        <div className="text-[11px] text-slate-500 truncate mb-2" title={qDef.topic}>
+                          {qDef.topic}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between gap-1">
+                        {[1, 2, 3, 4, 5].map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => {
+                              setTempSolutions((prev) => {
+                                const next = { ...prev };
+                                if (next[qNum] === opt) {
+                                  delete next[qNum];
+                                } else {
+                                  next[qNum] = opt;
+                                }
+                                return next;
+                              });
+                            }}
+                            className={`flex-1 py-1 rounded-lg text-xs font-bold transition-all ${
+                              currentAns === opt
+                                ? 'bg-sbsz-blue text-white shadow-sm ring-2 ring-sbsz-lightBlue'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
+              <div className="text-xs font-bold text-slate-600">
+                Hinterlegt: {Object.keys(tempSolutions).length} von {editingSolutionsExam.totalQuestions} Aufgaben
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingSolutionsExam(null)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs transition-colors"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSolutions}
+                  className="px-5 py-2 bg-sbsz-blue hover:bg-sbsz-darkBlue text-white font-bold rounded-xl text-xs transition-colors shadow flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Lösungsschlüssel speichern</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -73,15 +73,28 @@ export function App() {
   useEffect(() => {
     if (!currentStudent || !activeExam) return;
 
-    const fetchSubmission = () => {
-      getStudentSubmission(activeExam.id, currentStudent.id).then((sub) => {
+    let isMounted = true;
+
+    const fetchSubmission = async () => {
+      try {
+        const sub = await getStudentSubmission(activeExam.id, currentStudent.id);
+        if (!isMounted) return;
+
         if (sub) {
           setCurrentSubmission(sub);
-          setAnswers(sub.answers || {});
-          setDeselected(sub.deselected || []);
-          setLastSavedAt(sub.updatedAt);
-          if (sub.status === 'abgegeben' && activeView !== 'result') {
-            setActiveView('result');
+          // Only sync answers & deselected if exam is already submitted OR if user hasn't touched anything locally yet
+          if (sub.status === 'abgegeben') {
+            setAnswers(sub.answers || {});
+            setDeselected(sub.deselected || []);
+            setLastSavedAt(sub.updatedAt);
+            if (activeView !== 'result') {
+              setActiveView('result');
+            }
+          } else {
+            // In progress: populate initial state if not yet loaded
+            setAnswers((prev) => (Object.keys(prev).length === 0 ? sub.answers || {} : prev));
+            setDeselected((prev) => (prev.length === 0 ? sub.deselected || [] : prev));
+            setLastSavedAt(sub.updatedAt);
           }
         } else {
           // Fresh attempt
@@ -89,15 +102,25 @@ export function App() {
           setAnswers({});
           setDeselected([]);
         }
-      });
+      } catch (err) {
+        console.warn('[App] Fehler beim Laden der Abgabe:', err);
+      }
     };
 
     fetchSubmission();
 
-    // Polling alle 5 Sekunden nach neuem Lehrer-Feedback, falls Prüfung abgegeben
-    const interval = setInterval(fetchSubmission, 5000);
-    return () => clearInterval(interval);
-  }, [currentStudent, activeExam]);
+    // Polling NUR dann aktiv, wenn Prüfung abgegeben wurde und wir auf Lehrer-Feedback warten
+    // Das verhindert unnötige Server-Anfragen, UI-Freezes und State-Überschreibungen während der Schüler tippt.
+    let interval: any = null;
+    if (currentSubmission?.status === 'abgegeben' && !currentSubmission?.feedback?.isSent) {
+      interval = setInterval(fetchSubmission, 4000);
+    }
+
+    return () => {
+      isMounted = false;
+      if (interval) clearInterval(interval);
+    };
+  }, [currentStudent, activeExam, currentSubmission?.status, currentSubmission?.feedback?.isSent]);
 
   // Debounced Auto-Save
   const saveTimeoutRef = useRef<any>(null);
