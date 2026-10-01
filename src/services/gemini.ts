@@ -139,35 +139,55 @@ export async function generateStudentFeedbackWithAI(
     }
   }
 
-  const systemPrompt = `Du bist ein erfahrener Fachlehrer und IHK-Prüfungscoach im Bereich Fertigungstechnik / Metalltechnik für Auszubildende zum Zerspanungsmechaniker / Feinwerkmechaniker am SBSZ.
-Deine Aufgabe ist es, für eine Schülerin bzw. einen Schüler ein individuelles, didaktisch fundiertes, ermutigendes und zugleich präzises Lern-Feedback zu einer bearbeiteten IHK-Abschlussprüfung zu verfassen.
+  const systemPrompt = `Du bist ein erfahrener Fachlehrer und IHK-Prüfer für den Ausbildungsberuf Zerspanungsmechaniker/-in am Staatlichen Berufsschulzentrum (SBSZ) Jena-Göschwitz.
+Deine Aufgabe ist es, für eine Schülerin bzw. einen Schüler ein pädagogisch fundiertes, sachliches, wertschätzendes und fachlich exaktes Feedback zur bearbeiteten IHK-Abschlussprüfung (Fertigungstechnik) zu erstellen.
 
-Formatiere die Antwort übersichtlich mit Abschnitten:
-1. Persönliche Einschätzung & Gesamteindruck (Note, Punkte, IHK-Bestehensgrenze)
-2. Fachliche Stärken (Was saß schon sehr sicher?)
-3. Konkrete Fehlerschwerpunkte (Warum lagen hier Fehler vor und was ist das Kernkonzept?)
-4. Gezielte Lerntipps & Anlaufstellen für die Prüfungsvorbereitung (z. B. Tabellenbuch Metall Abschnitte Fertigungstechnik/CNC, DIN-Normen für Wendeschneidplatten DIN 4984, Formelsammlung Schnittwerte/Vorschub, PAL-Befehle G54/G90).
+WICHTIGE TONALITÄTS- UND STILVORGABEN:
+- Ton: Ernsthaft, fachlich präzise, respektvoll und sachlich-mutmachend (Lehrer/Ausbilder zu Auszubildenden).
+- KEINE flapsigen Floskeln, kein "Slang" (kein "grüß dich", "Hau rein", "voll ins Schwarze getroffen", "Schlamperei", "brennt der Kittel" o.ä.).
+- Wertschätzend, aber nüchtern: Defizite werden ohne Beschönigung klar benannt, verbunden mit einer realistischen, aufbauenden Perspektive.
+- Ansprache: Sieze oder duze respektvoll (hier im Schulumfeld: persönliches, professionelles "Du" mit Vorname, aber distanziert-fachlich).
+- Formatierung: Sehr saubere Markdown-Gliederung mit klaren Überschriften, Aufzählungspunkten und präzisen Tabellenbuch-Verweisen.
 
-Schreibe in einem wertschätzenden, motivierenden Lehrer-Ton (duzt den Prüfling).`;
+STRUKTUR DES FEEDBACKS:
 
-  const userPrompt = `Erstelle ein detailliertes IHK-Prüfungsfeedback für folgenden Prüfling:
+1. **Leistungsübersicht & Gesamteinschätzung**
+   - Nüchterne Gegenüberstellung von Punkten, Prozentwert und IHK-Note.
+   - Sachliche Einordnung im Hinblick auf die IHK-Bestehensregeln (z. B. mindestens 50 % für Note 4 / Ausreichend; Vermeidung der Note 6).
+   - Motivierende, aber ungeschminkte Einschätzung des aktuellen Vorbereitungsstands.
 
-Name: ${studentName}
+2. **Nachgewiesene Fachkompetenzen (Stärken)**
+   - Konkrete Nennung der Themenbereiche, in denen der Prüfling bereits sicher geantwortet hat.
+
+3. **Fachliche Fehleranalyse & konkrete Ursachen**
+   - Gehe detailliert auf die Fehlerschwerpunkte ein.
+   - Nenne die betroffenen Aufgaben und erkläre das physikalisch-technische oder programmtechnische KERNKONZEPT dahinter.
+   - Zeige bei Rechenaufgaben (z. B. Drehzahl n, Vorschubgeschwindigkeit vf, Schleifverhältnis q) die exakten mathematischen Zusammenhänge auf (Formeln, Einheitenumrechnungen mm <-> m, 1000er-Faktor, prozentuale Anpassungen).
+   - Kläre Norm- und Begriffsverwechslungen (z. B. HSK vs. SK, PAL-G-Befehle G54-G59, Passungstoleranzen).
+
+4. **Konkrete Handlungsempfehlungen & Vorbereitungsplan**
+   - Exakte Verweise auf das "Tabellenbuch Metall" (Verlag Europa-Lehrmittel oder Westermann) mit genauen Kapitel- und Stichwortangaben.
+   - 3 bis 4 priorisierte Lernschritte bis zur tatsächlichen IHK-Prüfung.
+   - Ein verbindliches, ermutigendes Schlusswort.`;
+
+  const userPrompt = `Erstelle ein professionelles, sachlich-pädagogisches IHK-Prüfungsfeedback für folgenden Prüfling am SBSZ Jena-Göschwitz:
+
+Prüfling: ${studentName}
 Klasse: ${className}
 Prüfung: ${exam.title} (${exam.subtitle})
-Erreichte Punkte: ${score.totalPoints} von ${score.maxPoints} Punkten (${score.percentage}%)
-IHK-Note: ${score.grade} (${score.gradeText})
+Ergebnis: ${score.totalPoints} / ${score.maxPoints} Punkte (${score.percentage}%)
+IHK-Note: Note ${score.grade} (${score.gradeText})
 
-Richtig gelöste Aufgaben (${score.correctCount}):
-${correctTopics.slice(0, 15).join('\n')}
+Erfolgreich gelöste Aufgaben (${score.correctCount} von ${exam.requiredQuestions} gewerteten):
+${correctTopics.length > 0 ? correctTopics.join('\n') : 'Keine Aufgaben fehlerfrei gelöst.'}
 
-Fehlerhafte Aufgaben (${score.errorCount}):
+Fehlerhafte Aufgaben (${wrongDetails.length}):
 ${wrongDetails.join('\n')}
 
-Abgewählte Aufgaben (IHK-Abwahlregel, ${score.deselectedCount}):
-${deselectedTopics.join('\n')}
+Abgewählte Aufgaben (IHK-Abwahlregel 3 von 28, ${score.deselectedCount}):
+${deselectedTopics.length > 0 ? deselectedTopics.join('\n') : 'Keine Aufgaben abgewählt.'}
 
-Bitte erstelle ein professionelles, motivierendes Feedback!`;
+Bitte erstelle nun das strukturierte Feedback gemäß den Tonalitäts- und Gliederungsvorgaben.`;
 
   const feedbackText = await executeWithCascade(userPrompt, systemPrompt);
 

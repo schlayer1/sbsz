@@ -14,6 +14,7 @@ import {
   GraduationCap,
 } from 'lucide-react';
 import { ExamDefinition, ExamSubmission } from '../types/exam';
+import { MarkdownRenderer } from './MarkdownRenderer';
 
 interface StudentResultViewProps {
   exam: ExamDefinition;
@@ -176,8 +177,8 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
             </span>
           </div>
 
-          <div className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 text-sm leading-relaxed text-slate-800 whitespace-pre-line shadow-inner">
-            {feedback.text}
+          <div className="bg-white rounded-xl p-5 sm:p-6 border border-slate-200 shadow-sm">
+            <MarkdownRenderer content={feedback.text} />
           </div>
 
           {/* Quick learning references */}
