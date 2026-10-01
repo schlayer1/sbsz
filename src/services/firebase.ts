@@ -53,37 +53,46 @@ export function saveCustomFirebaseConfig(config: FirebaseCustomConfig | null): v
   initFirebase();
 }
 
+// Offizielle Firebase-Konfiguration des SBSZ Projekts
+export const DEFAULT_FIREBASE_CONFIG: FirebaseCustomConfig = {
+  apiKey: "AIzaSyAaBXjIB7IOqSb0oIEBxrNPriKMibmemuw",
+  authDomain: "sbsz-ihk-pruefungen.firebaseapp.com",
+  projectId: "sbsz-ihk-pruefungen",
+  storageBucket: "sbsz-ihk-pruefungen.firebasestorage.app",
+  messagingSenderId: "517996225971",
+  appId: "1:517996225971:web:775fd950e65dce648c17c6",
+};
+
 export function initFirebase(): void {
   const customConfig = getCustomFirebaseConfig();
 
-  // Falls benutzerdefinierte Konfiguration existiert
+  // 1. Priorität: Im Lehrer-Dashboard manuell hinterlegte Konfiguration (localStorage)
   if (customConfig && customConfig.projectId && customConfig.apiKey) {
     try {
       if (getApps().length > 0) {
         // App neu initialisieren
         const currentApp = getApp();
-        // Firebase erlaubt kein einfaches Neukonfigurieren ohne Neuerstellung
       }
       appInstance = initializeApp(customConfig, `sbsz_${Date.now()}`);
       db = getFirestore(appInstance);
       if (customConfig.storageBucket) {
         storage = getStorage(appInstance);
       }
-      console.log('[Firebase] Erfolgreich initialisiert mit Projekt:', customConfig.projectId);
+      console.log('[Firebase] Erfolgreich initialisiert mit Dashboard-Konfiguration:', customConfig.projectId);
       return;
     } catch (err) {
       console.warn('[Firebase] Konnte benutzerdefinierte Konfiguration nicht laden:', err);
     }
   }
 
-  // Fallback: Prüfen ob Vite Environment-Variablen gesetzt sind
+  // 2. Priorität: Vite Environment-Variablen (z. B. auf Vercel)
   const envProjectId = (import.meta as any).env?.VITE_FIREBASE_PROJECT_ID;
   const envApiKey = (import.meta as any).env?.VITE_FIREBASE_API_KEY;
   if (envProjectId && envApiKey) {
     try {
       const envConfig = {
         apiKey: envApiKey,
-        authDomain: `${envProjectId}.firebaseapp.com`,
+        authDomain: (import.meta as any).env?.VITE_FIREBASE_AUTH_DOMAIN || `${envProjectId}.firebaseapp.com`,
         projectId: envProjectId,
         storageBucket:
           (import.meta as any).env?.VITE_FIREBASE_STORAGE_BUCKET ||
@@ -101,7 +110,20 @@ export function initFirebase(): void {
     }
   }
 
-  // Kein Firebase konfiguriert -> Läuft reibungslos im integrierten Offline-/Local-First Modus!
+  // 3. Priorität: Hinterlegte Standard-Projektkonfiguration (sbsz-ihk-pruefungen)
+  if (DEFAULT_FIREBASE_CONFIG.projectId && DEFAULT_FIREBASE_CONFIG.apiKey) {
+    try {
+      appInstance = getApps().length === 0 ? initializeApp(DEFAULT_FIREBASE_CONFIG) : getApp();
+      db = getFirestore(appInstance);
+      storage = getStorage(appInstance);
+      console.log('[Firebase] Initialisiert über hinterlegtes SBSZ Firebase-Projekt:', DEFAULT_FIREBASE_CONFIG.projectId);
+      return;
+    } catch (err) {
+      console.warn('[Firebase] Fehler bei Initialisierung der Standard-Konfiguration:', err);
+    }
+  }
+
+  // Fallback: Offline-/Local-First Modus
   db = null;
   storage = null;
 }
