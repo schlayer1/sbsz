@@ -850,7 +850,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
               <div className="flex items-center gap-2 flex-wrap">
                 <a
-                  href={`https://drive.google.com/drive/folders/${driveFolderId}`}
+                  href={`https://drive.google.com/drive/folders/${driveFolderId || '13BZyRvoznEnBV7kXiLXUhyFOfxcYRXCA'}?usp=share_link`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
@@ -1414,7 +1414,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <label className="font-bold text-slate-700">Google Drive Ordner-ID (Auto-Sync)</label>
                   {driveFolderId && (
                     <a
-                      href={`https://drive.google.com/drive/folders/${driveFolderId}`}
+                      href={`https://drive.google.com/drive/folders/${driveFolderId}?usp=share_link`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-xs text-sbsz-blue hover:underline font-bold inline-flex items-center gap-1"
