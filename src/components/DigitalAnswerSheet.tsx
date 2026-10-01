@@ -45,14 +45,21 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
   const nonDeselectableSet = new Set(exam.nonDeselectableQuestions || [6, 7, 8, 9, 12, 16, 20, 28]);
   const deselectedCount = deselected.length;
 
+  const totalQuestions = exam.totalQuestions || 28;
+  const requiredQuestions = exam.requiredQuestions || totalQuestions;
+  const maxDeselections = exam.maxDeselections ?? 0;
+  const hasDeselections = maxDeselections > 0;
+
   // Count answered questions that are NOT deselected
   const answeredCount = Object.keys(answers).filter((qStr) => {
     const qNum = Number(qStr);
     return answers[qNum] !== undefined && !deselected.includes(qNum);
   }).length;
 
-  const isDeselectTargetReached = deselectedCount === exam.maxDeselections;
-  const progressPercentage = Math.min(100, Math.round((answeredCount / exam.requiredQuestions) * 100));
+  const isCompleted = answeredCount >= requiredQuestions;
+  const remainingCount = Math.max(0, requiredQuestions - answeredCount);
+  const isDeselectTargetReached = hasDeselections && deselectedCount === maxDeselections;
+  const progressPercentage = Math.min(100, Math.round((answeredCount / requiredQuestions) * 100));
 
   const toggleExpand = (qNum: number) => {
     setManuallyExpanded((prev) => ({
@@ -109,7 +116,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
               <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                 SBSZ Jena • IHK Markierungsbogen
               </span>
-              <span className="text-xs text-sbsz-cyan font-semibold">Teil A (28 Aufgaben)</span>
+              <span className="text-xs text-sbsz-cyan font-semibold">Teil A ({totalQuestions} Aufgaben)</span>
             </div>
             <h2 className="text-sm sm:text-base font-extrabold tracking-tight mt-0.5">
               Digitaler Antwortbogen
@@ -135,15 +142,15 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
             <div>
               <div className="text-[11px] text-blue-200 font-medium">Bearbeitet</div>
               <div className="text-base sm:text-lg font-black tracking-tight">
-                {answeredCount} <span className="text-xs font-normal text-blue-200">/ 25</span>
+                {answeredCount} <span className="text-xs font-normal text-blue-200">/ {requiredQuestions}</span>
               </div>
             </div>
             <div
               className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                answeredCount === 25 ? 'bg-sbsz-lime text-slate-950 font-black' : 'bg-white/20 text-white'
+                isCompleted ? 'bg-sbsz-lime text-slate-950 font-black' : 'bg-white/20 text-white'
               }`}
             >
-              {answeredCount === 25 ? '✓' : `${25 - answeredCount}`}
+              {isCompleted ? '✓' : `${remainingCount}`}
             </div>
           </div>
 
@@ -151,7 +158,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
             <div>
               <div className="text-[11px] text-blue-200 font-medium">Abgewählt [A]</div>
               <div className="text-base sm:text-lg font-black tracking-tight">
-                {deselectedCount} <span className="text-xs font-normal text-blue-200">/ 3</span>
+                {deselectedCount} <span className="text-xs font-normal text-blue-200">/ {maxDeselections}</span>
               </div>
             </div>
             <div
@@ -159,7 +166,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
                 isDeselectTargetReached ? 'bg-amber-400 text-slate-950 font-black' : 'bg-white/20 text-white'
               }`}
             >
-              {isDeselectTargetReached ? '✓' : `${3 - deselectedCount}`}
+              {isDeselectTargetReached ? '✓' : `${Math.max(0, maxDeselections - deselectedCount)}`}
             </div>
           </div>
         </div>
@@ -171,7 +178,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
           <span className="font-extrabold text-slate-800 flex items-center gap-1.5">
             <span>Fortschritt:</span>
             <span className="text-sbsz-blue font-black font-mono text-sm">
-              {answeredCount} / {exam.requiredQuestions}
+              {answeredCount} / {requiredQuestions}
             </span>
             <span className="text-slate-600 font-medium">Fragen beantwortet</span>
           </span>
@@ -185,7 +192,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
         <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden p-0.5 border border-slate-200 shadow-inner">
           <div
             className={`h-full rounded-full transition-all duration-300 ${
-              answeredCount >= 25
+              isCompleted
                 ? 'bg-gradient-to-r from-emerald-500 to-sbsz-lime shadow-sm'
                 : 'bg-gradient-to-r from-sbsz-blue to-sbsz-cyan'
             }`}
@@ -196,14 +203,14 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
         {/* Sub-bar: Status & Schnellumschalter Einklappen / Aufklappen */}
         <div className="flex items-center justify-between text-[11px] pt-0.5">
           <div>
-            {answeredCount >= 25 ? (
+            {isCompleted ? (
               <span className="text-emerald-700 font-bold flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                Alle 25 erforderlichen Fragen beantwortet!
+                Alle {requiredQuestions} erforderlichen Fragen beantwortet!
               </span>
             ) : (
               <span className="text-slate-500">
-                Noch <strong className="text-slate-700">{25 - answeredCount}</strong> Frage(n) erforderlich
+                Noch <strong className="text-slate-700">{remainingCount}</strong> Frage(n) erforderlich
               </span>
             )}
           </div>
@@ -481,36 +488,38 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
               <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-1.5 text-xs text-slate-700">
                 <div className="flex justify-between">
                   <span>Bearbeitete Aufgaben:</span>
-                  <span className="font-bold">{answeredCount} von 25 erforderlich</span>
+                  <span className="font-bold">{answeredCount} von {requiredQuestions} erforderlich</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Vom Prüfling abgewählt [A]:</span>
-                  <span className="font-bold">{deselectedCount} von 3</span>
-                </div>
+                {hasDeselections && (
+                  <div className="flex justify-between">
+                    <span>Vom Prüfling abgewählt [A]:</span>
+                    <span className="font-bold">{deselectedCount} von {maxDeselections}</span>
+                  </div>
+                )}
               </div>
 
-              {deselectedCount < exam.maxDeselections && (
+              {hasDeselections && deselectedCount < maxDeselections && (
                 <div className="bg-amber-50 border border-amber-300 text-amber-950 p-3 rounded-xl text-xs space-y-1">
                   <div className="font-bold flex items-center gap-1.5 text-amber-900">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
                     <span>Hinweis zur IHK-Abwahlregel</span>
                   </div>
                   <p>
-                    Du hast nur <strong>{deselectedCount}</strong> von 3 Aufgaben abgewählt. Laut offizieller
+                    Du hast nur <strong>{deselectedCount}</strong> von {maxDeselections} Aufgaben abgewählt. Laut offizieller
                     IHK-Prüfungsordnung werden automatisch die letzten abwählbaren Aufgaben gestrichen und nicht
                     gewertet.
                   </p>
                 </div>
               )}
 
-              {answeredCount < 25 && (
+              {answeredCount < requiredQuestions && (
                 <div className="bg-sbsz-lightRed border border-red-200 text-sbsz-darkRed p-3 rounded-xl text-xs space-y-1">
                   <div className="font-bold flex items-center gap-1.5 text-sbsz-red">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-sbsz-red" />
                     <span>Offene Aufgaben vorhanden</span>
                   </div>
                   <p>
-                    Du hast noch nicht alle 25 Aufgaben beantwortet. Unbeantwortete Aufgaben zählen als nicht
+                    Du hast noch nicht alle {requiredQuestions} Aufgaben beantwortet. Unbeantwortete Aufgaben zählen als nicht
                     gelöst (0 Punkte).
                   </p>
                 </div>

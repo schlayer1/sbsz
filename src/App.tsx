@@ -338,7 +338,7 @@ export function App() {
               >
                 <Edit3 className="w-4 h-4" />
                 <span>
-                  Antwortbogen ({Object.keys(answers).length}/25)
+                  Antwortbogen ({Object.keys(answers).length}/{activeExam.requiredQuestions || activeExam.totalQuestions})
                 </span>
               </button>
             </div>
