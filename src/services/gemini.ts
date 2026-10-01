@@ -210,3 +210,168 @@ Bitte erstelle nun das strukturierte Feedback gemäß den Tonalitäts- und Glied
     teacherName
   };
 }
+
+/**
+ * Sendet Prompt und Datei (Bild/PDF als Base64) an Google Gemini Vision Kaskade
+ */
+export async function executeMultimodalCascade(
+  prompt: string,
+  base64Data: string,
+  mimeType: string,
+  systemInstruction?: string
+): Promise<string> {
+  const activeKey = getActiveGeminiApiKey();
+  if (!activeKey) {
+    throw new Error('Kein gültiger Google Gemini API-Schlüssel gefunden.');
+  }
+
+  const modelsToTry = cachedWorkingModel
+    ? [cachedWorkingModel, ...CANDIDATE_FLASH_MODELS.filter((m) => m !== cachedWorkingModel)]
+    : CANDIDATE_FLASH_MODELS;
+
+  let lastError: any = null;
+
+  for (const model of modelsToTry) {
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+
+    try {
+      const payload: any = {
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data,
+                },
+              },
+              { text: prompt },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.1, // Sehr niedrige Temperatur für maximale Präzision bei Zahlen/Lösungen
+          maxOutputTokens: 2048,
+        },
+      };
+
+      if (systemInstruction) {
+        payload.systemInstruction = {
+          parts: [{ text: systemInstruction }],
+        };
+      }
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          cachedWorkingModel = model;
+          return text;
+        }
+      } else {
+        const errorData = await response.text();
+        console.warn(`[Gemini Multimodal] Modell ${model} Status ${response.status}:`, errorData);
+        lastError = new Error(`Status ${response.status}: ${errorData}`);
+      }
+    } catch (err) {
+      console.warn(`[Gemini Multimodal] Fehler bei ${model}:`, err);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Keines der Gemini Flash Modelle konnte das Lösungsdokument verarbeiten.');
+}
+
+export interface ExtractedSolutionResult {
+  totalQuestions: number;
+  solutions: Record<number, number>;
+  notes?: string;
+  nonDeselectableQuestions?: number[];
+}
+
+/**
+ * Liest dynamisch alle Aufgaben und Antwortziffern (egal ob 20, 25, 28, 30 oder 35 Fragen)
+ * aus einem IHK-Lösungsblatt (PDF oder Bild) per Google Gemini aus.
+ */
+export async function extractSolutionKeyFromDocument(
+  base64Data: string,
+  mimeType: string
+): Promise<ExtractedSolutionResult> {
+  const systemInstruction = `Du bist ein hochpräziser IHK-Prüfungsassistent für gewerblich-technische und kaufmännische Ausbildungsberufe (z. B. Industriemechaniker, Zerspanungsmechaniker, Elektroniker, Mechatroniker, Fachinformatiker).
+Deine Aufgabe ist es, aus dem übergebenen IHK-Lösungsblatt (Musterlösung, Lösungsschlüssel, Lösungstabelle, Bewertungsbogen) alle Aufgabennummern und die jeweils zugehörigen richtigen Lösungsziffern (1 bis 5) vollständig und fehlerfrei zu extrahieren.
+
+WICHTIGE REGELN:
+1. Die Anzahl der Aufgaben ist DYNAMISCH. Es können z. B. 20, 25, 28, 30 oder mehr Aufgaben sein. Ermittle die tatsächliche Anzahl aus dem Dokument!
+2. Jede Aufgabe hat in der Regel eine Ziffer von 1 bis 5 als richtige Antwort.
+3. Falls Pflichtaufgaben (nicht abwählbare Aufgaben) markiert sind (z. B. mit * oder Fettdruck oder Vermerk "gebundene Aufgabe / Pflichtaufgabe"), erfasse deren Nummern.
+4. Gib das Ergebnis AUSSCHLIESSLICH als valides JSON-Objekt zurück, ohne Markdown-Backticks (\`\`\`json) und ohne einleitenden Text.
+
+JSON-STRUKTUR:
+{
+  "totalQuestions": 28,
+  "solutions": {
+    "1": 3,
+    "2": 2,
+    "3": 4,
+    ...
+  },
+  "nonDeselectableQuestions": [6, 7, 8, 9, 12, 16, 20, 28],
+  "notes": "Sommer 2025 Zerspanungsmechaniker Teil A - 28 Aufgaben erkannt"
+}`;
+
+  const prompt = `Analysiere dieses IHK-Lösungsdokument sorgfältig. 
+Lies jede Aufgabennummer und die zugehörige Lösungsziffer (1-5) aus.
+Gib ausschließlich das geforderte JSON zurück.`;
+
+  const rawResponse = await executeMultimodalCascade(prompt, base64Data, mimeType, systemInstruction);
+
+  // JSON sauber bereinigen
+  let cleanJson = rawResponse.trim();
+  if (cleanJson.startsWith('```json')) {
+    cleanJson = cleanJson.substring(7);
+  } else if (cleanJson.startsWith('```')) {
+    cleanJson = cleanJson.substring(3);
+  }
+  if (cleanJson.endsWith('```')) {
+    cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+  }
+  cleanJson = cleanJson.trim();
+
+  try {
+    const parsed = JSON.parse(cleanJson);
+    const solutionsMap: Record<number, number> = {};
+    if (parsed.solutions) {
+      for (const [k, v] of Object.entries(parsed.solutions)) {
+        const qNum = parseInt(k, 10);
+        const ansNum = parseInt(String(v), 10);
+        if (!isNaN(qNum) && !isNaN(ansNum) && ansNum >= 1 && ansNum <= 5) {
+          solutionsMap[qNum] = ansNum;
+        }
+      }
+    }
+
+    const totalQuestions =
+      parsed.totalQuestions && parsed.totalQuestions > 0
+        ? parsed.totalQuestions
+        : Math.max(Object.keys(solutionsMap).length, 28);
+
+    return {
+      totalQuestions,
+      solutions: solutionsMap,
+      notes: parsed.notes,
+      nonDeselectableQuestions: Array.isArray(parsed.nonDeselectableQuestions)
+        ? parsed.nonDeselectableQuestions
+        : undefined,
+    };
+  } catch (err: any) {
+    console.error('[Gemini] JSON Parse Fehler bei Lösungsextraktion:', cleanJson);
+    throw new Error('Gemini konnte die Lösungstabelle nicht in ein gültiges JSON-Format umwandeln. Bitte prüfe die Qualität des Dokuments.');
+  }
+}
