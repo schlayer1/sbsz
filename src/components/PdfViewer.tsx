@@ -165,18 +165,18 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         const context = canvas.getContext('2d');
         if (!context) return;
 
-        // Container-Dimensionen für optimales 1-Seiten-Fitting (Breite & Höhe berücksichtigen)
-        const availableWidth = Math.max(280, containerSize.width - 32);
-        const availableHeight = Math.max(400, containerSize.height - 32);
+        // Container-Dimensionen für optimales, großformatiges 1-Seiten-Fitting
+        const availableWidth = Math.max(320, containerSize.width - 24);
+        const availableHeight = Math.max(400, containerSize.height - 24);
 
         // Basis-Viewport bei 1.0 Skalierung
         const unscaledViewport = page.getViewport({ scale: 1.0 });
 
-        // Berechne Skalierungsfaktor so, dass die Seite exakt und harmonisch in den Viewport passt
+        // Berechne Skalierungsfaktor: Volle Breite nutzen (Fit-to-Width) für maximale Lesbarkeit
         const scaleW = availableWidth / unscaledViewport.width;
         const scaleH = availableHeight / unscaledViewport.height;
-        // Primär nach Breite einpassen, aber vertikales Maximum begrenzen
-        const baseFitScale = Math.min(scaleW, scaleH * 1.15);
+        // Basis-Skalierung: mind. 95% der Breite ausnutzen (bis zu 1.35x von scaleH), damit Schrift groß und klar lesbar ist
+        const baseFitScale = Math.max(scaleW * 0.96, Math.min(scaleW, scaleH * 1.35));
 
         // Benutzerspezifischer Zoom
         const userScale = (zoomLevel / 100) * baseFitScale;
@@ -345,7 +345,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       {/* Main Document Viewer Canvas: Immer exakt eine Seite zentriert & stabil eingepasst */}
       <div
         ref={containerRef}
-        className="flex-1 bg-slate-950 overflow-auto p-2 sm:p-4 flex items-start justify-center relative select-none"
+        className="flex-1 bg-slate-950 overflow-auto p-1 sm:p-2 flex items-start justify-center relative select-none w-full"
       >
         {isPdfLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-xs z-10 space-y-3">
@@ -354,14 +354,14 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           </div>
         )}
 
-        <div className="flex flex-col items-center justify-center max-w-full">
+        <div className="w-full h-full flex flex-col items-center justify-start min-h-0">
           {isSampleWithImages ? (
             /* Modus 1: Vorgerenderte Buchseiten (Beispielprüfung Sommer 2025) */
             <div
-              className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 transition-all duration-150 flex items-center justify-center"
+              className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 transition-all duration-150 flex items-center justify-center w-full"
               style={{
                 width: zoomLevel === 100 ? '100%' : `${zoomLevel}%`,
-                maxWidth: '920px',
+                maxWidth: zoomLevel <= 100 ? '1200px' : 'none',
               }}
             >
               <img
@@ -373,28 +373,39 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             </div>
           ) : pdfDoc ? (
             /* Modus 2: Echte PDF-Seiten vektorscharf über PDF.js Canvas gerendert (immer exakt 1 Seite) */
-            <div className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 flex items-center justify-center">
-              <canvas ref={canvasRef} className="block shadow-md" />
+            <div className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 flex items-center justify-center max-w-full">
+              <canvas ref={canvasRef} className="block shadow-md max-w-full h-auto" />
             </div>
           ) : pdfError ? (
-            /* Modus 3: Fallback bei PDF-CORS/Drive-Link Einschränkung */
-            <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl p-6 text-center space-y-4 my-auto shadow-xl">
-              <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
-                <AlertCircle className="w-6 h-6" />
+            /* Modus 3: Fallback bei PDF-CORS/Drive-Link - Vollflächig, maximal groß und glasklar lesbar */
+            <div className="w-full h-full flex flex-col items-stretch justify-start min-h-[calc(100vh-210px)]">
+              {/* Schlanke, unaufdringliche Statuszeile ohne Platzverlust */}
+              <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 mb-2 flex items-center justify-between text-xs text-slate-300">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="font-medium text-slate-200">Google Drive Vorschau eingebettet</span>
+                  <span className="text-slate-500 hidden sm:inline">•</span>
+                  <span className="text-slate-400 hidden sm:inline">Vollbild-Darstellung aktiv</span>
+                </div>
+                {exam.pdfUrl && (
+                  <a
+                    href={exam.pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300 font-semibold underline text-xs"
+                  >
+                    <span>Im neuen Tab vergrößern</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+                )}
               </div>
-              <div>
-                <h4 className="text-base font-bold text-slate-200">
-                  Direktes PDF-Rendering erfordert Freigabe
-                </h4>
-                <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                  Die hinterlegte Datei liegt auf einem externen Speicher. Sie können die Datei in der Vorschau einbetten oder direkt öffnen.
-                </p>
-              </div>
-              <div className="w-full bg-white rounded-xl overflow-hidden shadow-inner h-[620px] border border-slate-700">
+
+              {/* Iframe nimmt 100% der verfügbaren Höhe und Breite ein */}
+              <div className="flex-1 w-full bg-white rounded-xl overflow-hidden shadow-2xl border border-slate-700 min-h-[calc(100vh-250px)]">
                 <iframe
                   src={formatPdfEmbedUrl(exam.pdfUrl, currentPage)}
                   title="IHK Prüfungsheft PDF"
-                  className="w-full h-full border-0"
+                  className="w-full h-full border-0 block"
                   allow="autoplay"
                 />
               </div>
