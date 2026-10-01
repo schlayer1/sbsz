@@ -10,6 +10,7 @@ interface StudentAuthModalProps {
   onRegisterStudent: (firstName: string, lastName: string, className: string) => Promise<void>;
   cachedStudents: StudentProfile[];
   preventClose?: boolean;
+  onOpenTeacherLogin?: () => void;
 }
 
 export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
@@ -19,6 +20,7 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
   onRegisterStudent,
   cachedStudents,
   preventClose = false,
+  onOpenTeacherLogin,
 }) => {
   // Tab 1: "Ich habe ein Kürzel" (Default/Primär) | Tab 2: "Neues Kürzel anlegen"
   const [activeTab, setActiveTab] = useState<'code' | 'register'>('code');
@@ -129,22 +131,22 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
           </div>
         )}
 
-        {/* Dual Tab Navigation according to school-student-auth */}
-        <div className="grid grid-cols-2 p-1.5 bg-slate-100 border-b border-slate-200 text-xs font-bold">
+        {/* 3 Options Navigation: Kürzel Login | Kürzel anlegen | Lehrer-Bereich */}
+        <div className="grid grid-cols-2 p-1.5 bg-slate-100 border-b border-slate-200 text-xs font-bold gap-1">
           <button
             type="button"
             onClick={() => {
               setActiveTab('code');
               setError(null);
             }}
-            className={`py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all ${
+            className={`py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               activeTab === 'code'
                 ? 'bg-white text-sbsz-darkBlue shadow font-extrabold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Key className="w-4 h-4 text-sbsz-blue" />
-            <span>Ich habe ein Kürzel</span>
+            <Key className="w-3.5 h-3.5 text-sbsz-blue" />
+            <span>Kürzel eingeben</span>
           </button>
 
           <button
@@ -153,14 +155,14 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
               setActiveTab('register');
               setError(null);
             }}
-            className={`py-2.5 rounded-xl flex items-center justify-center gap-2 transition-all ${
+            className={`py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
               activeTab === 'register'
                 ? 'bg-white text-sbsz-darkBlue shadow font-extrabold'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <UserPlus className="w-4 h-4 text-sbsz-red" />
-            <span>Neues Kürzel anlegen</span>
+            <UserPlus className="w-3.5 h-3.5 text-sbsz-red" />
+            <span>Neu anlegen</span>
           </button>
         </div>
 
@@ -327,6 +329,27 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
             </form>
           )}
         </div>
+
+        {/* Option für Lehrer-Login direkt in der vorgeschalteten Loginmaske */}
+        {onOpenTeacherLogin && (
+          <div className="bg-slate-50 border-t border-slate-200 p-3.5 sm:px-6 flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2 text-slate-600">
+              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="font-medium">Sie sind Lehrkraft?</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenTeacherLogin();
+              }}
+              className="bg-sbsz-darkBlue hover:bg-sbsz-navy text-white px-3 py-1.5 rounded-xl font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
+              <span>Zum Lehrer-Login</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -85,8 +85,16 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {hasFeedback && (
               <button
-                onClick={() => setActiveView('result')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all ${
+                onClick={() => {
+                  setActiveView('result');
+                  setTimeout(() => {
+                    const el = document.getElementById('teacher-feedback-section');
+                    if (el) {
+                      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                  }, 80);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                   activeView === 'result'
                     ? 'bg-amber-400 text-slate-950 shadow-md ring-2 ring-amber-300'
                     : 'bg-amber-400/20 text-amber-300 hover:bg-amber-400/30 border border-amber-400/40 animate-pulse'

@@ -313,7 +313,7 @@ export function App() {
             }}
             onClose={() => setIsTeacherMode(false)}
           />
-        ) : activeView === 'result' && currentSubmission?.score ? (
+        ) : activeView === 'result' && currentSubmission ? (
           /* ========================================================= */
           /* VIEW 2: SCHÜLER ERGEBNIS & AUSWERTUNG */
           /* ========================================================= */
@@ -485,6 +485,10 @@ export function App() {
         onLoginWithCode={handleLoginWithCode}
         onRegisterStudent={handleRegisterStudent}
         cachedStudents={cachedStudents}
+        onOpenTeacherLogin={() => {
+          setShowStudentModal(false);
+          setShowTeacherModal(true);
+        }}
       />
 
       <TeacherAuthModal

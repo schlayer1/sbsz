@@ -16,6 +16,8 @@ import {
 import { ExamDefinition, ExamSubmission } from '../types/exam';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
+import { calculateIhkScore } from '../utils/ihkGrader';
+
 interface StudentResultViewProps {
   exam: ExamDefinition;
   submission: ExamSubmission;
@@ -29,7 +31,10 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
   onRetakeExam,
   onJumpToPdfPage,
 }) => {
-  const score = submission.score;
+  // Falls die Einreichung noch kein explizites score-Objekt hat, dynamisch berechnen
+  const score =
+    submission.score ||
+    calculateIhkScore(exam, submission.answers || {}, submission.deselected || []);
 
   // Launch confetti on high scores
   useEffect(() => {
@@ -43,14 +48,6 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
       } catch {}
     }
   }, [score]);
-
-  if (!score) {
-    return (
-      <div className="p-8 text-center text-slate-500">
-        Keine Auswertung verfügbar. Bitte gib zuerst den Prüfungsbogen ab.
-      </div>
-    );
-  }
 
   const isPassed = score.percentage >= 50;
   const feedback = submission.feedback;
@@ -157,7 +154,7 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
 
       {/* Teacher / Gemini AI Feedback Section */}
       {feedback && feedback.isSent ? (
-        <div className="bg-gradient-to-br from-sbsz-lightBlue via-white to-white rounded-2xl border-2 border-sbsz-borderBlue p-5 sm:p-6 shadow-md space-y-4">
+        <div id="teacher-feedback-section" className="scroll-mt-20 bg-gradient-to-br from-sbsz-lightBlue via-white to-white rounded-2xl border-2 border-sbsz-borderBlue p-5 sm:p-6 shadow-md space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-sbsz-blue text-white flex items-center justify-center shadow">
