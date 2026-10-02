@@ -9,16 +9,19 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>
 );
 
-// PWA Service Worker Registration
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/sw.js')
-      .then((registration) => {
-        console.log('[PWA] Service Worker erfolgreich registriert:', registration.scope);
-      })
-      .catch((error) => {
-        console.warn('[PWA] Service Worker Registrierung fehlgeschlagen:', error);
-      });
+// Clean up legacy Service Workers and caches to guarantee reliable loading on Safari & mobile
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    for (const registration of registrations) {
+      registration.unregister().catch(() => {});
+    }
   });
+  if ('caches' in window) {
+    caches.keys().then((names) => {
+      names.forEach((name) => {
+        caches.delete(name).catch(() => {});
+      });
+    });
+  }
 }
+
