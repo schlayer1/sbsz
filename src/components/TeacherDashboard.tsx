@@ -61,6 +61,8 @@ import {
 } from '../services/firebase';
 import {
   generateStudentFeedbackWithAI,
+  generateDidacticTipsForProblems,
+  DidacticAITipResult,
   getActiveGeminiApiKey,
   saveTeacherGeminiApiKey,
   extractSolutionKeyFromDocument,
@@ -119,6 +121,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   // Analytics Filter States (Feature 5: Didaktik-Radar)
   const [analyticsExamId, setAnalyticsExamId] = useState<string>('Alle');
   const [analyticsOnlyProblems, setAnalyticsOnlyProblems] = useState<boolean>(false);
+  const [aiDidacticTips, setAiDidacticTips] = useState<Record<number, DidacticAITipResult>>({});
+  const [isGeneratingDidacticTips, setIsGeneratingDidacticTips] = useState<boolean>(false);
+  const [didacticTipsError, setDidacticTipsError] = useState<string | null>(null);
 
   // Firebase Config Form
   const [fbConfig, setFbConfig] = useState<FirebaseCustomConfig>({
@@ -719,6 +724,39 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   };
 
   const questionAnalytics = computeQuestionAnalytics();
+
+  const handleGenerateDidacticTips = async () => {
+    const topProblems = questionAnalytics.slice(0, 4);
+    if (topProblems.length === 0) return;
+
+    setIsGeneratingDidacticTips(true);
+    setDidacticTipsError(null);
+
+    const currentExam =
+      exams.find((e) => e.id === analyticsExamId) ||
+      exams.find((e) => analyticsSubmissions.some((s) => s.examId === e.id)) ||
+      exams[0];
+    const examTitle = currentExam ? `${currentExam.title} (${currentExam.subtitle})` : 'IHK Abschlussprüfung';
+
+    try {
+      const tipsMap = await generateDidacticTipsForProblems(
+        examTitle,
+        selectedClass,
+        topProblems.map((p) => ({
+          questionNum: p.questionNum,
+          topic: p.topic,
+          errorRate: p.errorRate,
+          pageNumber: p.pageNumber,
+        }))
+      );
+      setAiDidacticTips((prev) => ({ ...prev, ...tipsMap }));
+    } catch (err: any) {
+      console.error('Fehler beim Generieren der KI-Didaktiktipps:', err);
+      setDidacticTipsError(err?.message || 'Fehler beim Abrufen der KI-Didaktiktipps.');
+    } finally {
+      setIsGeneratingDidacticTips(false);
+    }
+  };
 
   return (
     <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-5 sm:py-6 space-y-6 animate-fade-in">
@@ -1538,7 +1576,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           {/* DIDAKTIK-RADAR HERO: Die Top-Problemfelder */}
           {questionAnalytics.length > 0 && (
             <div className="bg-gradient-to-br from-slate-900 via-sbsz-darkBlue to-sbsz-navy text-white p-5 sm:p-6 rounded-2xl shadow-lg space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xl shadow">
                     🎯
@@ -1548,73 +1586,143 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                       Klassen-Didaktik-Radar • Größte Förderschwerpunkte
                     </h3>
                     <p className="text-xs text-blue-200">
-                      Automatisch identifizierte Wissenslücken mit Handlungsempfehlungen für die nächste Unterrichtsstunde
+                      Automatisch identifizierte Wissenslücken mit aufgabenbezogenen KI-Handlungsempfehlungen für das Kollegium
                     </p>
                   </div>
                 </div>
 
-                <span className="bg-white/10 text-sbsz-cyan text-xs font-bold px-3 py-1 rounded-xl border border-white/20">
-                  Top Problemthemen ({selectedClass})
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={handleGenerateDidacticTips}
+                    disabled={isGeneratingDidacticTips}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-md transition-all flex items-center gap-1.5 disabled:opacity-60 cursor-pointer"
+                    title="Gemini KI analysiert die Fehlerursachen und generiert maßgeschneiderte Unterrichtstipps für Fachlehrer"
+                  >
+                    {isGeneratingDidacticTips ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Generiere KI-Didaktiktipps...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5 text-slate-950" />
+                        <span>
+                          {Object.keys(aiDidacticTips).length > 0
+                            ? 'KI-Unterrichtstipps neu berechnen'
+                            : 'Passgenaue KI-Tipps für Kollegium anfordern'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+
+                  <span className="bg-white/10 text-sbsz-cyan text-xs font-bold px-3 py-1 rounded-xl border border-white/20">
+                    Klasse: {selectedClass}
+                  </span>
+                </div>
               </div>
 
+              {didacticTipsError && (
+                <div className="bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs p-3 rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{didacticTipsError}</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-1">
-                {questionAnalytics.slice(0, 4).map((item, idx) => (
-                  <div
-                    key={item.questionNum}
-                    className="bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl p-4 transition-all space-y-2.5"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-7 h-7 rounded-lg bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
-                          #{idx + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <h4 className="font-extrabold text-sm text-white truncate">
-                            Aufgabe {item.questionNum}: {item.topic}
-                          </h4>
-                          <span className="text-[11px] text-blue-200">
-                            Aufgabenheft Seite {item.pageNumber}
+                {questionAnalytics.slice(0, 4).map((item, idx) => {
+                  const aiTip = aiDidacticTips[item.questionNum];
+                  return (
+                    <div
+                      key={item.questionNum}
+                      className="bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl p-4 transition-all space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-7 h-7 rounded-lg bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
+                            #{idx + 1}
                           </span>
+                          <div className="min-w-0">
+                            <h4 className="font-extrabold text-sm text-white truncate">
+                              Aufgabe {item.questionNum}: {item.topic}
+                            </h4>
+                            <span className="text-[11px] text-blue-200">
+                              Aufgabenheft Seite {item.pageNumber}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-base font-black font-mono text-rose-300">
+                            {item.errorRate}%
+                          </span>
+                          <div className="text-[10px] text-rose-200 uppercase font-bold">
+                            Fehlerquote
+                          </div>
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <span className="text-base font-black font-mono text-rose-300">
-                          {item.errorRate}%
-                        </span>
-                        <div className="text-[10px] text-rose-200 uppercase font-bold">
-                          Fehlerquote
-                        </div>
+                      {/* Bar breakdown */}
+                      <div className="w-full h-2.5 bg-black/40 rounded-full overflow-hidden flex shadow-inner">
+                        <div
+                          style={{ width: `${item.errorRate}%` }}
+                          className="bg-rose-500 h-full transition-all"
+                          title={`Fehler: ${item.errorRate}%`}
+                        />
+                        <div
+                          style={{ width: `${item.correctRate}%` }}
+                          className="bg-emerald-400 h-full transition-all"
+                          title={`Richtig: ${item.correctRate}%`}
+                        />
+                        <div
+                          style={{ width: `${item.deselectedRate}%` }}
+                          className="bg-amber-400 h-full transition-all"
+                          title={`Abgewählt: ${item.deselectedRate}%`}
+                        />
                       </div>
-                    </div>
 
-                    {/* Bar breakdown */}
-                    <div className="w-full h-2.5 bg-black/40 rounded-full overflow-hidden flex shadow-inner">
-                      <div
-                        style={{ width: `${item.errorRate}%` }}
-                        className="bg-rose-500 h-full transition-all"
-                        title={`Fehler: ${item.errorRate}%`}
-                      />
-                      <div
-                        style={{ width: `${item.correctRate}%` }}
-                        className="bg-emerald-400 h-full transition-all"
-                        title={`Richtig: ${item.correctRate}%`}
-                      />
-                      <div
-                        style={{ width: `${item.deselectedRate}%` }}
-                        className="bg-amber-400 h-full transition-all"
-                        title={`Abgewählt: ${item.deselectedRate}%`}
-                      />
-                    </div>
+                      {/* Didactic Advice Box - KI-optimiert oder Fachdidaktischer Basis-Tipp */}
+                      {aiTip ? (
+                        <div className="bg-amber-500/10 border border-amber-400/30 rounded-xl p-3 text-xs space-y-2">
+                          <div className="flex items-center justify-between text-amber-300 font-extrabold text-[11px] uppercase tracking-wide">
+                            <span className="flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                              Passgenaue KI-Didaktik-Empfehlung
+                            </span>
+                            <span className="bg-amber-400/20 text-amber-200 px-2 py-0.5 rounded text-[10px] lowercase font-mono">
+                              gemini-flash
+                            </span>
+                          </div>
 
-                    {/* Didactic Advice Box */}
-                    <div className="bg-black/30 border border-white/10 rounded-lg p-2.5 text-xs text-blue-100 flex items-start gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
-                      <p className="leading-snug">{item.recommendation}</p>
+                          <div className="space-y-1">
+                            <div className="text-white font-bold text-xs">
+                              {aiTip.coreConcept}
+                            </div>
+                            <p className="text-blue-100 text-xs leading-relaxed">
+                              {aiTip.tip}
+                            </p>
+                          </div>
+
+                          {aiTip.suggestedAction && (
+                            <div className="bg-black/30 border border-white/10 rounded-lg px-2.5 py-1.5 text-[11px] text-amber-200 flex items-start gap-1.5">
+                              <span className="font-bold shrink-0">Stunden-Einstieg:</span>
+                              <span className="leading-snug">{aiTip.suggestedAction}</span>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="bg-black/30 border border-white/10 rounded-lg p-2.5 text-xs text-blue-100 flex items-start gap-2">
+                          <Sparkles className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                          <div className="space-y-0.5">
+                            <p className="leading-snug">{item.recommendation}</p>
+                            <p className="text-[10px] text-blue-300 italic">
+                              Tipp: Klicke oben auf „Passgenaue KI-Tipps für Kollegium anfordern“ für tiefergehende Fachdidaktik.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

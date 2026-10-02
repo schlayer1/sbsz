@@ -234,6 +234,96 @@ ${wrongDetails.length > 0 ? wrongDetails.slice(0, 5).map((w) => `- ${w}`).join('
   };
 }
 
+export interface ProblemQuestionInput {
+  questionNum: number;
+  topic: string;
+  errorRate: number;
+  pageNumber?: number;
+  correctAnswer?: number;
+}
+
+export interface DidacticAITipResult {
+  questionNum: number;
+  tip: string;
+  coreConcept: string;
+  suggestedAction: string;
+}
+
+/**
+ * Generiert präzise, aufgabenbezogene didaktische Handlungsempfehlungen für Fachlehrer
+ * basierend auf den identifizierten Klassen-Schwachstellen (Didaktik-Radar).
+ */
+export async function generateDidacticTipsForProblems(
+  examTitle: string,
+  className: string,
+  problems: ProblemQuestionInput[]
+): Promise<Record<number, DidacticAITipResult>> {
+  if (!problems || problems.length === 0) return {};
+
+  const systemPrompt = `Du bist ein erfahrener Fachbereichsleiter und Fachleiter für Fertigungstechnik & Metalltechnik am Staatlichen Berufsschulzentrum (SBSZ) Jena-Göschwitz.
+Deine Aufgabe ist es, für eine Kollegin / einen Kollegen präzise, extrem praxisnahe und aufgabenbezogene didaktische Unterrichtstipps für die nächste Unterrichtsstunde zu formulieren, um aufgedeckte Wissenslücken der Klasse gezielt zu schließen.
+
+WICHTIGE ANFORDERUNGEN:
+1. KEINE generischen Floskeln wie "Aufgabe besprechen" oder "Schüler üben lassen".
+2. Konkret auf das fachliche KERNPROBLEM der jeweiligen Aufgabenstellung eingehen:
+   - Welche typische Denkfalle oder Rechenfalle (z. B. Einheitenumrechnung m/min <-> mm/min, DIN-Normenverwechslung, Nullpunkt vs. Referenzpunkt, Vorzeichenfehler bei Inkrementell G91) führt hier zum Fehler?
+   - Welcher konkrete methodische Einstieg oder Demonstrationsschritt hilft in den ersten 15 Minuten der nächsten Unterrichtsstunde?
+   - Welches Tabellenbuchkapitel / Formel oder welcher Maschinenschritt (Steuerung/Simulation/Werkstatt) löst das Problem dauerhaft?
+3. Sprache: Professionell, kollegial, prägnant, lösungsorientiert.
+4. Gib das Ergebnis AUSSCHLIESSLICH als valides JSON-Array zurück:
+[
+  {
+    "questionNum": 7,
+    "coreConcept": "z. B. Schnittwertanpassung mit prozentualer Drehzahlerhöhung",
+    "suggestedAction": "z. B. Kurz-Rechenübung an der Tafel mit Formel n = vc / (d * pi)",
+    "tip": "z. B. Kollegialer Ratschlag (2-3 Sätze): Typischer Stolperstein ist hier das Vergessen des 1000er-Faktors..."
+  }
+]`;
+
+  const problemDescriptions = problems
+    .map(
+      (p) =>
+        `- Aufgabe ${p.questionNum}: Thema "${p.topic}" (Fehlerquote in Klasse ${className}: ${p.errorRate}%, PDF-Seite: ${p.pageNumber || 'unbekannt'})`
+    )
+    .join('\n');
+
+  const userPrompt = `Prüfung: ${examTitle}
+Klasse: ${className}
+Identifizierte Problem-Aufgaben der Klasse:
+${problemDescriptions}
+
+Erstelle bitte für jede dieser Aufgaben einen maßgeschneiderten, fachdidaktischen Unterrichtstipp für den Fachlehrer im Kollegium als valides JSON-Array.`;
+
+  try {
+    const rawJson = await executeWithCascade(userPrompt, systemPrompt);
+    let cleanJson = rawJson.trim();
+    if (cleanJson.startsWith('```json')) {
+      cleanJson = cleanJson.substring(7);
+    } else if (cleanJson.startsWith('```')) {
+      cleanJson = cleanJson.substring(3);
+    }
+    if (cleanJson.endsWith('```')) {
+      cleanJson = cleanJson.substring(0, cleanJson.length - 3);
+    }
+    cleanJson = cleanJson.trim();
+
+    const parsed: DidacticAITipResult[] = JSON.parse(cleanJson);
+    const result: Record<number, DidacticAITipResult> = {};
+    if (Array.isArray(parsed)) {
+      parsed.forEach((item) => {
+        if (item.questionNum) {
+          result[item.questionNum] = item;
+        }
+      });
+    }
+    return result;
+  } catch (err) {
+    console.warn('[Gemini] Konnte keine KI-Didaktiktipps generieren:', err);
+    throw err;
+  }
+}
+
+
 /**
  * Sendet Prompt und Datei (Bild/PDF als Base64) an Google Gemini Vision Kaskade
  */
