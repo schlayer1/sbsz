@@ -1,0 +1,84 @@
+{
+  "name": "SBSZ Jena-Göschwitz | IHK Prüfungsportal",
+  "short_name": "SBSZ Prüfungen",
+  "description": "Digitales Prüfungsportal und Trainingscenter für IHK-Abschlussprüfungen der Staatlichen Berufsbildenden Schule Jena-Göschwitz",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1b365d",
+  "theme_color": "#1b365d",
+  "lang": "de-DE",
+  "dir": "ltr",
+  "categories": [
+    "education",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192x192-maskable.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512x512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Prüfungsbogen bearbeiten",
+      "short_name": "Prüfungsbogen",
+      "description": "Direkt zum aktuellen IHK-Prüfungsbogen wechseln",
+      "url": "/?view=exam",
+      "icons": [
+        {
+          "src": "/icon-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Lehrer-Dashboard",
+      "short_name": "Lehrer",
+      "description": "Ergebnisse und Feedback im Kollegiums-Dashboard einsehen",
+      "url": "/?view=teacher",
+      "icons": [
+        {
+          "src": "/apple-touch-icon.png",
+          "sizes": "180x180"
+        }
+      ]
+    }
+  ]
+}
