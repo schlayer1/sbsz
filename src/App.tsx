@@ -297,7 +297,7 @@ export function App() {
       <main
         className={`flex-1 flex flex-col transition-all duration-300 ${
           !currentStudent && !isTeacherMode
-            ? 'filter blur-md pointer-events-none select-none opacity-40'
+            ? 'pointer-events-none select-none opacity-20'
             : ''
         }`}
       >

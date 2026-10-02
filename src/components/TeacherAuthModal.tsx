@@ -29,7 +29,7 @@ export const TeacherAuthModal: React.FC<TeacherAuthModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-sbsz-navy/70 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/80 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
         <div className="bg-sbsz-darkBlue text-white p-5 flex items-center justify-between border-b border-sbsz-navy">
           <div className="flex items-center gap-3">
