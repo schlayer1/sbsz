@@ -190,7 +190,29 @@ ${deselectedTopics.length > 0 ? deselectedTopics.join('\n') : 'Keine Aufgaben ab
 
 Bitte erstelle nun das strukturierte Feedback gemäß den Tonalitäts- und Gliederungsvorgaben.`;
 
-  const feedbackText = await executeWithCascade(userPrompt, systemPrompt);
+  let feedbackText = '';
+  try {
+    feedbackText = await executeWithCascade(userPrompt, systemPrompt);
+  } catch (err) {
+    console.warn('[Gemini] Kaskade fehlgeschlagen oder Rate-Limit, erstelle strukturierte didaktische Vorlage:', err);
+    feedbackText = `### Leistungsübersicht & Gesamteinschätzung
+Prüfling: **${studentName}** (Klasse ${className})  
+Ergebnis: **${score.totalPoints} von ${score.maxPoints} Punkten** (${score.percentage} %) – **Note ${score.grade} (${score.gradeText})**.  
+${score.percentage >= 50 ? 'Die Prüfung gilt nach den IHK-Kriterien als **bestanden**.' : 'Die Mindestanforderung (50 %) wurde in diesem Durchgang leider noch nicht erreicht.'}
+
+### 1. Nachgewiesene Fachkompetenzen (Stärken)
+In folgenden Aufgabenbereichen zeigst du bereits solide Fachkenntnisse:
+${correctTopics.length > 0 ? correctTopics.slice(0, 4).map((t) => `- ${t}`).join('\n') : '- Grundlagen weiter vertiefen.'}
+
+### 2. Prioritäre Handlungsfelder & Fehlerschwerpunkte
+In diesen Bereichen traten Abweichungen auf:
+${wrongDetails.length > 0 ? wrongDetails.slice(0, 5).map((w) => `- ${w}`).join('\n') : '- Keine wesentlichen Fehler.'}
+
+### 3. Konkrete Empfehlungen für die Prüfungsvorbereitung
+- **Tabellenbuch Metall**: Kapitel Schnittwertberechnung & Werkzeuggeometrie gründlich wiederholen.
+- **PAL-Leitfaden**: Nullpunktverschiebungen (G54-G59) und Bearbeitungszyklen intensiv üben.
+- Nutze die verbleibende Zeit bis zur IHK-Abschlussprüfung konsequent für gezieltes Schließen dieser Wissenslücken!`;
+  }
 
   return {
     id: `fb_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
