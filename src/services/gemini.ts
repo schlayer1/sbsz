@@ -124,8 +124,9 @@ export async function generateStudentFeedbackWithAI(
   const deselectedTopics: string[] = [];
 
   for (let q = 1; q <= exam.totalQuestions; q++) {
-    const evalData = score.questionEvaluations[q];
-    const qDef = exam.questions.find((item) => item.number === q);
+    const evalData = score?.questionEvaluations?.[q];
+    if (!evalData) continue;
+    const qDef = exam.questions?.find((item) => item.number === q);
     const topic = qDef?.topic || `Aufgabe ${q}`;
 
     if (evalData.isDeselected) {
@@ -134,7 +135,7 @@ export async function generateStudentFeedbackWithAI(
       correctTopics.push(`Aufgabe ${q}: ${topic}`);
     } else {
       wrongDetails.push(
-        `Aufgabe ${q} (${topic}): Schüler wählte Antwort [${evalData.studentAnswer ?? 'keine'}], richtig war [${evalData.correctAnswer}]`
+        `Aufgabe ${q} (${topic}): Schüler wählte Antwort [${evalData.studentAnswer ?? 'keine'}], richtig war [${evalData.correctAnswer ?? '?'}]`
       );
     }
   }

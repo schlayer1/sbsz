@@ -31,12 +31,16 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
   onRetakeExam,
   onJumpToPdfPage,
 }) => {
-  // Falls die Einreichung noch kein explizites score-Objekt hat, dynamisch und stabil berechnen
+  // Falls die Einreichung noch kein vollständiges score-Objekt hat, dynamisch und stabil berechnen
   const score = useMemo(() => {
-    return (
-      submission.score ||
-      calculateIhkScore(exam, submission.answers || {}, submission.deselected || [])
-    );
+    if (
+      submission.score &&
+      submission.score.questionEvaluations &&
+      Object.keys(submission.score.questionEvaluations).length > 0
+    ) {
+      return submission.score;
+    }
+    return calculateIhkScore(exam, submission.answers || {}, submission.deselected || []);
   }, [submission.score, submission.answers, submission.deselected, exam]);
 
   // Confetti exakt einmal pro Einreichungs-ID auslösen, um Re-render Loop / UI Freezes zu verhindern
@@ -259,17 +263,21 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
 
         <div className="divide-y divide-slate-100 overflow-x-auto">
           {Array.from({ length: exam.totalQuestions }, (_, i) => i + 1).map((qNum) => {
-            const evalData = score.questionEvaluations[qNum];
+            const evalData = score?.questionEvaluations?.[qNum];
             const qDef = exam.questions.find((q) => q.number === qNum);
             const pageNum = qDef?.pageNumber || 3;
+            const isCorrect = Boolean(evalData?.isCorrect);
+            const isDeselected = Boolean(evalData?.isDeselected);
+            const studentAnswer = evalData?.studentAnswer ?? submission.answers?.[qNum] ?? null;
+            const correctAnswer = evalData?.correctAnswer ?? exam.solutions?.[qNum] ?? '—';
 
             return (
               <div
                 key={qNum}
                 className={`p-3.5 sm:px-5 flex items-center justify-between gap-3 transition-colors ${
-                  evalData?.isDeselected
+                  isDeselected
                     ? 'bg-amber-50/40 text-slate-600'
-                    : evalData?.isCorrect
+                    : isCorrect
                     ? 'hover:bg-emerald-50/30'
                     : 'bg-sbsz-lightRed/40 hover:bg-sbsz-lightRed/70'
                 }`}
@@ -278,9 +286,9 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
                 <div className="flex items-center gap-3 min-w-0">
                   <div
                     className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                      evalData?.isDeselected
+                      isDeselected
                         ? 'bg-amber-100 text-amber-800'
-                        : evalData?.isCorrect
+                        : isCorrect
                         ? 'bg-emerald-100 text-emerald-800'
                         : 'bg-sbsz-lightRed text-sbsz-darkRed font-black'
                     }`}
@@ -302,11 +310,11 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
                   <div className="text-right">
                     <div className="text-[10px] uppercase font-bold text-slate-400">Ihre Wahl</div>
                     <div className="text-xs sm:text-sm font-extrabold font-mono">
-                      {evalData?.isDeselected ? (
+                      {isDeselected ? (
                         <span className="text-amber-800 bg-amber-100 px-2 py-0.5 rounded">Abgewählt [A]</span>
-                      ) : evalData?.studentAnswer !== null ? (
-                        <span className={evalData.isCorrect ? 'text-emerald-700' : 'text-sbsz-red'}>
-                          Option {evalData.studentAnswer}
+                      ) : studentAnswer !== null && studentAnswer !== undefined ? (
+                        <span className={isCorrect ? 'text-emerald-700' : 'text-sbsz-red'}>
+                          Option {studentAnswer}
                         </span>
                       ) : (
                         <span className="text-slate-400 italic">Keine Angabe</span>
@@ -317,7 +325,7 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
                   <div className="text-right">
                     <div className="text-[10px] uppercase font-bold text-slate-400">IHK Lösung</div>
                     <div className="text-xs sm:text-sm font-extrabold font-mono text-sbsz-darkBlue bg-sbsz-lightBlue px-2 py-0.5 rounded border border-sbsz-borderBlue">
-                      Option {evalData?.correctAnswer}
+                      Option {correctAnswer}
                     </div>
                   </div>
 

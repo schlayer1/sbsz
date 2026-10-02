@@ -568,7 +568,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       let deselected = 0;
 
       totalSubsWithScore.forEach((sub) => {
-        const evalData = sub.score?.questionEvaluations[q];
+        const evalData = sub.score?.questionEvaluations?.[q];
         if (evalData) {
           if (evalData.isDeselected) deselected++;
           else if (evalData.isCorrect) corrects++;
@@ -1567,7 +1567,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               {selectedSubmission.score ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {Array.from({ length: 28 }, (_, i) => i + 1).map((qNum) => {
-                    const evalData = selectedSubmission.score?.questionEvaluations[qNum];
+                    const evalData = selectedSubmission.score?.questionEvaluations?.[qNum];
                     return (
                       <div
                         key={qNum}
@@ -1583,8 +1583,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         <span className="font-mono font-black">
                           {evalData?.isDeselected
                             ? '[A]'
-                            : evalData?.studentAnswer !== null
-                            ? evalData?.studentAnswer
+                            : evalData && evalData.studentAnswer !== null && evalData.studentAnswer !== undefined
+                            ? evalData.studentAnswer
                             : '—'}
                         </span>
                       </div>

@@ -451,6 +451,9 @@ export async function getStudentSubmission(examId: string, studentId: string): P
       if ((!cloudData.deselected || cloudData.deselected.length === 0) && localSub?.deselected) {
         merged.deselected = localSub.deselected;
       }
+      if (!cloudData.score && localSub?.score) {
+        merged.score = localSub.score;
+      }
       if (!cloudData.studentName && localSub?.studentName) {
         merged.studentName = localSub.studentName;
       }
