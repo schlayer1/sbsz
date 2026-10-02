@@ -217,6 +217,31 @@ function saveExamToLocal(exam: ExamDefinition): void {
   } catch {}
 }
 
+/**
+ * Entfernt rekursiv alle 'undefined' Werte aus Objekten & Arrays,
+ * da Firestore setDoc/updateDoc mit undefined strikt abbricht.
+ */
+export function deepSanitize<T>(obj: T): T {
+  if (obj === undefined || obj === null) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj
+      .filter((v) => v !== undefined)
+      .map((v) => deepSanitize(v)) as unknown as T;
+  }
+  if (typeof obj === 'object') {
+    const clean: Record<string, any> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== undefined) {
+        clean[key] = deepSanitize(value);
+      }
+    }
+    return clean as T;
+  }
+  return obj;
+}
+
 import { generateStudentCode, formatStudentCode } from '../utils/studentCode';
 
 // ==========================================
@@ -394,11 +419,46 @@ export async function getStudentSubmission(examId: string, studentId: string): P
   if (!db) return localSub || null;
 
   try {
+    const mergeWithLocal = (cloudData: Partial<ExamSubmission>): ExamSubmission => {
+      // Falls cloudData nur ein partielles Update war (z. B. { feedback }),
+      // behalten wir Antworten und Metadaten aus dem lokalen Cache bei.
+      const merged: ExamSubmission = {
+        id: submissionId,
+        examId,
+        studentId,
+        studentCode: '',
+        studentName: '',
+        className: '',
+        answers: {},
+        deselected: [],
+        status: 'in_bearbeitung',
+        startedAt: Date.now(),
+        updatedAt: Date.now(),
+        ...localSub,
+        ...cloudData,
+      };
+
+      // Wenn cloudData keine answers hat, aber localSub schon:
+      if ((!cloudData.answers || Object.keys(cloudData.answers).length === 0) && localSub?.answers) {
+        merged.answers = localSub.answers;
+      }
+      if ((!cloudData.deselected || cloudData.deselected.length === 0) && localSub?.deselected) {
+        merged.deselected = localSub.deselected;
+      }
+      if (!cloudData.studentName && localSub?.studentName) {
+        merged.studentName = localSub.studentName;
+      }
+      if (!cloudData.className && localSub?.className) {
+        merged.className = localSub.className;
+      }
+      return merged;
+    };
+
     // 2. Firestore Direkt-Abfrage
     const docRef = doc(db, SUBMISSIONS_COLLECTION, submissionId);
     const snap = await getDoc(docRef);
     if (snap.exists()) {
-      const data = snap.data() as ExamSubmission;
+      const data = mergeWithLocal(snap.data() as ExamSubmission);
       saveSubmissionToLocal(data);
       return data;
     }
@@ -407,7 +467,7 @@ export async function getStudentSubmission(examId: string, studentId: string): P
     const q1 = query(collection(db, SUBMISSIONS_COLLECTION), where('examId', '==', examId), where('studentId', '==', studentId));
     const snap1 = await getDocs(q1);
     if (!snap1.empty) {
-      const data = snap1.docs[0].data() as ExamSubmission;
+      const data = mergeWithLocal(snap1.docs[0].data() as ExamSubmission);
       saveSubmissionToLocal(data);
       return data;
     }
@@ -415,7 +475,7 @@ export async function getStudentSubmission(examId: string, studentId: string): P
     const q2 = query(collection(db, SUBMISSIONS_COLLECTION), where('examId', '==', examId), where('studentCode', '==', studentId));
     const snap2 = await getDocs(q2);
     if (!snap2.empty) {
-      const data = snap2.docs[0].data() as ExamSubmission;
+      const data = mergeWithLocal(snap2.docs[0].data() as ExamSubmission);
       saveSubmissionToLocal(data);
       return data;
     }
@@ -427,12 +487,13 @@ export async function getStudentSubmission(examId: string, studentId: string): P
 }
 
 export async function saveExamSubmission(submission: ExamSubmission): Promise<void> {
-  saveSubmissionToLocal(submission);
+  const cleanSubmission = deepSanitize(submission);
+  saveSubmissionToLocal(cleanSubmission);
 
   if (db) {
     try {
-      const docRef = doc(db, SUBMISSIONS_COLLECTION, submission.id);
-      await setDoc(docRef, submission, { merge: true });
+      const docRef = doc(db, SUBMISSIONS_COLLECTION, cleanSubmission.id);
+      await setDoc(docRef, cleanSubmission, { merge: true });
     } catch (err) {
       console.warn('[Firebase] Konnte Abgabe nicht in Firestore speichern:', err);
     }
@@ -486,7 +547,15 @@ export async function getAllSubmissions(): Promise<ExamSubmission[]> {
     // Merge: Firestore ist führend, aber lokale neue Einträge nicht verlieren
     const map = new Map<string, ExamSubmission>();
     localList.forEach((s) => map.set(s.id, s));
-    cloudSubs.forEach((s) => map.set(s.id, s));
+    cloudSubs.forEach((s) => {
+      const existing = map.get(s.id);
+      if (existing) {
+        // Deep merge, sodass lokale Details erhalten bleiben
+        map.set(s.id, { ...existing, ...s });
+      } else {
+        map.set(s.id, s);
+      }
+    });
 
     const merged = Array.from(map.values()).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     localStorage.setItem(LOCAL_SUBMISSIONS_CACHE_KEY, JSON.stringify(merged));
@@ -515,20 +584,39 @@ function saveSubmissionToLocal(submission: ExamSubmission): void {
 }
 
 export async function sendFeedbackToStudent(submissionId: string, feedback: TeacherFeedback): Promise<void> {
-  feedback.isSent = true;
-  feedback.sentAt = Date.now();
+  const cleanFeedback = deepSanitize({
+    ...feedback,
+    isSent: true,
+    sentAt: Date.now(),
+  });
 
   const localSubs = getLocalSubmissions();
   const sub = localSubs.find((s) => s.id === submissionId);
   if (sub) {
-    sub.feedback = feedback;
+    sub.feedback = cleanFeedback;
     saveSubmissionToLocal(sub);
   }
 
   if (db) {
     try {
       const docRef = doc(db, SUBMISSIONS_COLLECTION, submissionId);
-      await setDoc(docRef, { feedback }, { merge: true });
+      // Beim Senden des Feedbacks auch Metadaten sicherstellen, falls das Dokument in Firestore noch unvollständig war
+      const updatePayload: Record<string, any> = { feedback: cleanFeedback };
+      if (sub) {
+        if (sub.examId) updatePayload.examId = sub.examId;
+        if (sub.studentId) updatePayload.studentId = sub.studentId;
+        if (sub.studentCode) updatePayload.studentCode = sub.studentCode;
+        if (sub.studentName) updatePayload.studentName = sub.studentName;
+        if (sub.className) updatePayload.className = sub.className;
+        if (sub.status) updatePayload.status = sub.status;
+        if (sub.score) updatePayload.score = deepSanitize(sub.score);
+        if (sub.answers) updatePayload.answers = sub.answers;
+        if (sub.deselected) updatePayload.deselected = sub.deselected;
+        if (sub.submittedAt) updatePayload.submittedAt = sub.submittedAt;
+        if (sub.startedAt) updatePayload.startedAt = sub.startedAt;
+        updatePayload.updatedAt = Date.now();
+      }
+      await setDoc(docRef, updatePayload, { merge: true });
     } catch (err) {
       console.warn('[Firebase] Konnte Feedback nicht in Firestore sichern:', err);
     }

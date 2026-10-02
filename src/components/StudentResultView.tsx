@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import {
   Award,
@@ -31,14 +31,20 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
   onRetakeExam,
   onJumpToPdfPage,
 }) => {
-  // Falls die Einreichung noch kein explizites score-Objekt hat, dynamisch berechnen
-  const score =
-    submission.score ||
-    calculateIhkScore(exam, submission.answers || {}, submission.deselected || []);
+  // Falls die Einreichung noch kein explizites score-Objekt hat, dynamisch und stabil berechnen
+  const score = useMemo(() => {
+    return (
+      submission.score ||
+      calculateIhkScore(exam, submission.answers || {}, submission.deselected || [])
+    );
+  }, [submission.score, submission.answers, submission.deselected, exam]);
 
-  // Launch confetti on high scores
+  // Confetti exakt einmal pro Einreichungs-ID auslösen, um Re-render Loop / UI Freezes zu verhindern
+  const confettiTriggeredRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (score && score.percentage >= 67) {
+    if (score && score.percentage >= 67 && confettiTriggeredRef.current !== submission.id) {
+      confettiTriggeredRef.current = submission.id;
       try {
         confetti({
           particleCount: 80,
@@ -47,7 +53,7 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
         });
       } catch {}
     }
-  }, [score]);
+  }, [score, submission.id]);
 
   const isPassed = score.percentage >= 50;
   const feedback = submission.feedback;
