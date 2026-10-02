@@ -495,17 +495,95 @@ export async function getStudentSubmission(examId: string, studentId: string): P
   return localSub || null;
 }
 
+export const OFFLINE_QUEUE_KEY = 'sbsz_offline_sync_queue_v1';
+
+export function getOfflineSyncQueue(): ExamSubmission[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function addToOfflineSyncQueue(submission: ExamSubmission): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const queue = getOfflineSyncQueue().filter((s) => s.id !== submission.id);
+    queue.push(submission);
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  } catch (err) {
+    console.warn('[Offline-Queue] Fehler beim Hinzufügen:', err);
+  }
+}
+
+export function removeFromOfflineSyncQueue(submissionId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const queue = getOfflineSyncQueue().filter((s) => s.id !== submissionId);
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+  } catch (err) {
+    console.warn('[Offline-Queue] Fehler beim Entfernen:', err);
+  }
+}
+
+export async function flushOfflineSyncQueue(): Promise<number> {
+  if (!db || typeof window === 'undefined' || !navigator.onLine) return 0;
+  const queue = getOfflineSyncQueue();
+  if (queue.length === 0) return 0;
+
+  let syncedCount = 0;
+  for (const sub of queue) {
+    try {
+      const docRef = doc(db, SUBMISSIONS_COLLECTION, sub.id);
+      await setDoc(docRef, sub, { merge: true });
+      removeFromOfflineSyncQueue(sub.id);
+      syncedCount++;
+    } catch (err) {
+      console.warn(`[Offline-Queue] Sync fehlgeschlagen für ${sub.id}:`, err);
+    }
+  }
+  if (syncedCount > 0) {
+    console.log(`[Offline-Queue] ${syncedCount} Offline-Abgaben synchronisiert.`);
+  }
+  return syncedCount;
+}
+
+// Global Network Event Listener für verzögerungsfreien Sync
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    console.log('[Netzwerk] Wieder online! Synchronisiere Offline-Warteschlange...');
+    flushOfflineSyncQueue();
+  });
+  setInterval(() => {
+    if (typeof navigator !== 'undefined' && navigator.onLine && db) {
+      flushOfflineSyncQueue();
+    }
+  }, 15000);
+}
+
 export async function saveExamSubmission(submission: ExamSubmission): Promise<void> {
   const cleanSubmission = deepSanitize(submission);
   saveSubmissionToLocal(cleanSubmission);
+
+  // Falls offline, direkt in sichere lokale Warteschlange
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    addToOfflineSyncQueue(cleanSubmission);
+    return;
+  }
 
   if (db) {
     try {
       const docRef = doc(db, SUBMISSIONS_COLLECTION, cleanSubmission.id);
       await setDoc(docRef, cleanSubmission, { merge: true });
+      removeFromOfflineSyncQueue(cleanSubmission.id);
     } catch (err) {
-      console.warn('[Firebase] Konnte Abgabe nicht in Firestore speichern:', err);
+      console.warn('[Firebase] Konnte Abgabe nicht in Firestore speichern; puffere in Offline-Queue:', err);
+      addToOfflineSyncQueue(cleanSubmission);
     }
+  } else {
+    addToOfflineSyncQueue(cleanSubmission);
   }
 }
 

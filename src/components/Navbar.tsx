@@ -1,5 +1,5 @@
-import React from 'react';
-import { User, ShieldCheck, LogOut, FileText, CheckCircle2, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { User, ShieldCheck, LogOut, FileText, CheckCircle2, Sparkles, WifiOff } from 'lucide-react';
 import { StudentProfile } from '../types/exam';
 
 interface NavbarProps {
@@ -31,6 +31,20 @@ export const Navbar: React.FC<NavbarProps> = ({
   totalFeedbackCount,
   onOpenFeedbackOverview,
 }) => {
+  const [isOnline, setIsOnline] = useState<boolean>(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
   return (
     <header className="bg-sbsz-blue text-white shadow-md sticky top-0 z-40 border-b border-sbsz-navy/40">
       <div className="w-full max-w-[2100px] mx-auto px-2.5 sm:px-4 lg:px-8 xl:px-10 2xl:px-12 py-2 flex items-center justify-between gap-2">
@@ -124,8 +138,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         )}
 
-        {/* User / Auth State */}
+        {/* User / Auth State & Offline Indicator */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {!isOnline && (
+            <div
+              className="flex items-center gap-1.5 bg-amber-400 text-slate-950 font-black px-2 sm:px-2.5 py-1 rounded-xl text-[11px] sm:text-xs shadow-sm border border-amber-500 animate-pulse"
+              title="Keine Internetverbindung: Alle Eingaben werden lokal im Browser gesichert und automatisch übertragen, sobald wieder Verbindung besteht."
+            >
+              <WifiOff className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Offline-Puffer aktiv</span>
+              <span className="sm:hidden">Offline</span>
+            </div>
+          )}
+
           {isTeacherMode ? (
             <div className="flex items-center gap-1.5">
               <div className="bg-amber-400 text-slate-950 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 shadow">

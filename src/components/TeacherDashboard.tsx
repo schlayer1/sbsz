@@ -116,6 +116,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [sentFeedbackSearch, setSentFeedbackSearch] = useState('');
   const [expandedSentFeedbackId, setExpandedSentFeedbackId] = useState<string | null>(null);
 
+  // Analytics Filter States (Feature 5: Didaktik-Radar)
+  const [analyticsExamId, setAnalyticsExamId] = useState<string>('Alle');
+  const [analyticsOnlyProblems, setAnalyticsOnlyProblems] = useState<boolean>(false);
+
   // Firebase Config Form
   const [fbConfig, setFbConfig] = useState<FirebaseCustomConfig>({
     apiKey: '',
@@ -564,10 +568,106 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     setTimeout(() => setConfigSavedNotice(false), 3000);
   };
 
-  // Question Heatmap
+  // Helper for Didaktik-Radar
+  const getDidacticRecommendation = (topic: string, questionNum: number): string => {
+    const lower = topic.toLowerCase();
+    if (
+      lower.includes('schnittgeschwindigkeit') ||
+      lower.includes('drehzahl') ||
+      lower.includes('vorschub') ||
+      lower.includes('berechnung') ||
+      lower.includes('hauptnutzzeit')
+    ) {
+      return 'Formeln für Schnittdaten (vc = π · d · n / 1000) im Tabellenbuch Metall S. 296 gemeinsam berechnen und Einheitenumrechnungen üben.';
+    }
+    if (
+      lower.includes('passung') ||
+      lower.includes('toleranz') ||
+      lower.includes('iso') ||
+      lower.includes('h7')
+    ) {
+      return 'Toleranzfeldlagen (z. B. H7/h6), Höchst-/Mindestmaße und Passungsarten (Spiel-, Übergangs-, Übermaßpassung) an der Tafel wiederholen.';
+    }
+    if (
+      lower.includes('cnc') ||
+      lower.includes('g-code') ||
+      lower.includes('nullpunkt') ||
+      lower.includes('g54') ||
+      lower.includes('werkzeug')
+    ) {
+      return 'DIN 66025 G-Code Befehle (G00, G01, G54 Werkstück-Nullpunkt) und Werkzeugradiuskorrektur (G41/G42) an der Steuerung/Simulation demonstrieren.';
+    }
+    if (
+      lower.includes('härte') ||
+      lower.includes('wärmebehandlung') ||
+      lower.includes('werkstoff') ||
+      lower.includes('stahl')
+    ) {
+      return 'Eisen-Kohlenstoff-Diagramm, Härteprüfverfahren (Vickers, Rockwell, Brinell) und Glühverfahren im Fachkunde-Unterricht rekapitulieren.';
+    }
+    if (
+      lower.includes('kraft') ||
+      lower.includes('drehmoment') ||
+      lower.includes('leistung')
+    ) {
+      return 'Mechanische Grundformeln (Fz, P, M) aus dem Tabellenbuch ableiten und praxisnahe Rechenbeispiele durchrechnen.';
+    }
+    if (
+      lower.includes('zeichnung') ||
+      lower.includes('bemaßung') ||
+      lower.includes('schnitt') ||
+      lower.includes('ansicht')
+    ) {
+      return 'Technische Baugruppenzeichnung (Bild a) gemeinsam im Plenum analysieren und Bemaßungsregeln nach DIN ISO 129 besprechen.';
+    }
+    return `Aufgabenstellung von Aufgabe ${questionNum} gemeinsam im Plenum durchgehen und Lösungsbegründung nach IHK-Standard erarbeiten.`;
+  };
+
+  // Submissions filtered for Analytics (Class + Exam)
+  const analyticsSubmissions = submissions.filter((sub) => {
+    const matchClass = selectedClass === 'Alle' || sub.className === selectedClass;
+    const matchExam = analyticsExamId === 'Alle' || sub.examId === analyticsExamId;
+    return matchClass && matchExam && sub.score !== null && sub.score !== undefined;
+  });
+
+  const classKpis = (() => {
+    const total = analyticsSubmissions.length;
+    if (total === 0) {
+      return {
+        total: 0,
+        avgPercentage: 0,
+        avgGrade: '—',
+        passRate: 0,
+        gradeCounts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 } as Record<number, number>,
+      };
+    }
+    let sumPercentage = 0;
+    let sumGrade = 0;
+    let passedCount = 0;
+    const gradeCounts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0 };
+
+    analyticsSubmissions.forEach((sub) => {
+      if (sub.score) {
+        sumPercentage += sub.score.percentage || 0;
+        sumGrade += sub.score.grade || 0;
+        if (sub.score.percentage >= 50) passedCount++;
+        const g = Math.min(6, Math.max(1, sub.score.grade || 0));
+        gradeCounts[g] = (gradeCounts[g] || 0) + 1;
+      }
+    });
+
+    return {
+      total,
+      avgPercentage: Math.round(sumPercentage / total),
+      avgGrade: (sumGrade / total).toFixed(1),
+      passRate: Math.round((passedCount / total) * 100),
+      gradeCounts,
+    };
+  })();
+
+  // Question Heatmap & Didaktik-Radar
   const computeQuestionAnalytics = () => {
-    const totalSubsWithScore = filteredSubmissions.filter((s) => s.score !== null);
-    const count = totalSubsWithScore.length;
+    const count = analyticsSubmissions.length;
     if (count === 0) return [];
 
     const stats: {
@@ -576,9 +676,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       errorRate: number;
       correctRate: number;
       deselectedRate: number;
+      recommendation: string;
+      pageNumber: number;
     }[] = [];
 
-    const currentExam = exams[0];
+    const currentExam =
+      exams.find((e) => e.id === analyticsExamId) ||
+      exams.find((e) => analyticsSubmissions.some((s) => s.examId === e.id)) ||
+      exams[0];
     const totalQ = currentExam?.totalQuestions || 28;
 
     for (let q = 1; q <= totalQ; q++) {
@@ -586,7 +691,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       let corrects = 0;
       let deselected = 0;
 
-      totalSubsWithScore.forEach((sub) => {
+      analyticsSubmissions.forEach((sub) => {
         const evalData = sub.score?.questionEvaluations?.[q];
         if (evalData) {
           if (evalData.isDeselected) deselected++;
@@ -595,14 +700,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         }
       });
 
-      const qDef = currentExam?.questions.find((item) => item.number === q);
+      const qDef = currentExam?.questions?.find((item) => item.number === q);
+      const topic = qDef?.topic || `Aufgabe ${q}`;
+      const errRate = Math.round((errors / count) * 100);
 
       stats.push({
         questionNum: q,
-        topic: qDef?.topic || `Aufgabe ${q}`,
-        errorRate: Math.round((errors / count) * 100),
+        topic,
+        errorRate: errRate,
         correctRate: Math.round((corrects / count) * 100),
         deselectedRate: Math.round((deselected / count) * 100),
+        recommendation: getDidacticRecommendation(topic, q),
+        pageNumber: qDef?.pageNumber || 3,
       });
     }
 
@@ -1295,46 +1404,201 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 3: KLASSEN-FEHLERANALYSE (HEATMAP) */}
+      {/* TAB 3: KLASSEN-FEHLERANALYSE & DIDAKTIK-RADAR */}
       {activeTab === 'analytics' && (
-        <div className="space-y-4">
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-            <h3 className="font-extrabold text-base text-slate-900">
-              Klassen-Fehlerquote pro Prüfungsaufgabe (Aufgaben 1 bis 28)
-            </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Identifiziert automatisch die thematischen Schwachstellen des Jahrgangs für gezielten Förderunterricht am SBSZ.
-            </p>
-
-            {questionAnalytics.length === 0 ? (
-              <div className="p-8 text-center text-slate-400 text-xs">
-                Noch keine Schülerabgaben zur Berechnung der Fehlerquoten vorhanden.
+        <div className="space-y-6">
+          {/* Top Filter Bar */}
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Class Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Klasse:
+                </span>
+                <div className="flex items-center gap-1">
+                  {allClasses.map((cls) => (
+                    <button
+                      key={cls}
+                      type="button"
+                      onClick={() => setSelectedClass(cls)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        selectedClass === cls
+                          ? 'bg-sbsz-blue text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      {cls}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ) : (
-              <div className="mt-5 space-y-3">
-                {questionAnalytics.slice(0, 10).map((item) => (
-                  <div key={item.questionNum} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2 font-bold text-slate-800">
-                        <span className="w-6 h-6 rounded-md bg-sbsz-darkBlue text-white flex items-center justify-center text-[11px]">
-                          {item.questionNum}
+
+              {/* Exam Selector */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Prüfungsheft:
+                </span>
+                <select
+                  value={analyticsExamId}
+                  onChange={(e) => setAnalyticsExamId(e.target.value)}
+                  className="text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-sbsz-blue cursor-pointer"
+                >
+                  <option value="Alle">Alle Prüfungshefte kumuliert</option>
+                  {exams.map((ex) => (
+                    <option key={ex.id} value={ex.id}>
+                      {ex.examCode ? `[${ex.examCode}] ` : ''}
+                      {ex.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Problem Filter Toggle */}
+            <button
+              type="button"
+              onClick={() => setAnalyticsOnlyProblems(!analyticsOnlyProblems)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                analyticsOnlyProblems
+                  ? 'bg-rose-50 text-rose-800 border-rose-300 shadow-xs'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+              <span>Nur Problemaufgaben (&gt; 30% Fehler)</span>
+            </button>
+          </div>
+
+          {/* Class KPI Hero & Notenspiegel */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Ausgewertete Abgaben
+              </span>
+              <div className="text-2xl font-black text-slate-900 mt-1">
+                {classKpis.total}{' '}
+                <span className="text-xs font-normal text-slate-500">Schülerarbeiten</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Klasse: {selectedClass} • Heft: {analyticsExamId === 'Alle' ? 'Alle' : analyticsExamId}
+              </p>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Klassendurchschnitt
+              </span>
+              <div className="text-2xl font-black text-sbsz-darkBlue mt-1">
+                {classKpis.avgPercentage}%{' '}
+                <span className="text-xs font-bold text-slate-600">
+                  (Note {classKpis.avgGrade})
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">IHK-Bewertungsschlüssel</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                Bestehensquote
+              </span>
+              <div className="text-2xl font-black text-emerald-700 mt-1">
+                {classKpis.passRate}%
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">Mindestens Note 4 (&gt;= 50%)</p>
+            </div>
+
+            {/* Notenspiegel Bar */}
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1.5">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                IHK-Notenspiegel
+              </span>
+              <div className="grid grid-cols-6 gap-1 text-center pt-0.5">
+                {[1, 2, 3, 4, 5, 6].map((grade) => (
+                  <div key={grade} className="space-y-0.5">
+                    <div className="text-[10px] font-bold text-slate-500">N{grade}</div>
+                    <div
+                      className={`py-1 rounded text-xs font-black font-mono ${
+                        classKpis.gradeCounts[grade] > 0
+                          ? grade <= 3
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : grade === 4
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-rose-100 text-rose-800'
+                          : 'bg-slate-50 text-slate-300'
+                      }`}
+                    >
+                      {classKpis.gradeCounts[grade]}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* DIDAKTIK-RADAR HERO: Die Top-Problemfelder */}
+          {questionAnalytics.length > 0 && (
+            <div className="bg-gradient-to-br from-slate-900 via-sbsz-darkBlue to-sbsz-navy text-white p-5 sm:p-6 rounded-2xl shadow-lg space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xl shadow">
+                    🎯
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base sm:text-lg tracking-tight">
+                      Klassen-Didaktik-Radar • Größte Förderschwerpunkte
+                    </h3>
+                    <p className="text-xs text-blue-200">
+                      Automatisch identifizierte Wissenslücken mit Handlungsempfehlungen für die nächste Unterrichtsstunde
+                    </p>
+                  </div>
+                </div>
+
+                <span className="bg-white/10 text-sbsz-cyan text-xs font-bold px-3 py-1 rounded-xl border border-white/20">
+                  Top Problemthemen ({selectedClass})
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 pt-1">
+                {questionAnalytics.slice(0, 4).map((item, idx) => (
+                  <div
+                    key={item.questionNum}
+                    className="bg-white/10 hover:bg-white/15 border border-white/15 rounded-xl p-4 transition-all space-y-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-7 h-7 rounded-lg bg-amber-400 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 shadow-xs">
+                          #{idx + 1}
                         </span>
-                        <span>{item.topic}</span>
+                        <div className="min-w-0">
+                          <h4 className="font-extrabold text-sm text-white truncate">
+                            Aufgabe {item.questionNum}: {item.topic}
+                          </h4>
+                          <span className="text-[11px] text-blue-200">
+                            Aufgabenheft Seite {item.pageNumber}
+                          </span>
+                        </div>
                       </div>
-                      <span className="font-extrabold font-mono text-sbsz-red">
-                        {item.errorRate}% Fehler
-                      </span>
+
+                      <div className="text-right shrink-0">
+                        <span className="text-base font-black font-mono text-rose-300">
+                          {item.errorRate}%
+                        </span>
+                        <div className="text-[10px] text-rose-200 uppercase font-bold">
+                          Fehlerquote
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex">
+                    {/* Bar breakdown */}
+                    <div className="w-full h-2.5 bg-black/40 rounded-full overflow-hidden flex shadow-inner">
                       <div
                         style={{ width: `${item.errorRate}%` }}
-                        className="bg-sbsz-red h-full transition-all"
+                        className="bg-rose-500 h-full transition-all"
                         title={`Fehler: ${item.errorRate}%`}
                       />
                       <div
                         style={{ width: `${item.correctRate}%` }}
-                        className="bg-emerald-500 h-full transition-all"
+                        className="bg-emerald-400 h-full transition-all"
                         title={`Richtig: ${item.correctRate}%`}
                       />
                       <div
@@ -1343,8 +1607,101 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         title={`Abgewählt: ${item.deselectedRate}%`}
                       />
                     </div>
+
+                    {/* Didactic Advice Box */}
+                    <div className="bg-black/30 border border-white/10 rounded-lg p-2.5 text-xs text-blue-100 flex items-start gap-2">
+                      <Sparkles className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
+                      <p className="leading-snug">{item.recommendation}</p>
+                    </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {/* Full 28 Questions Heatmap List */}
+          <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-extrabold text-base text-slate-900">
+                  Vollständige Fehlerquoten (Aufgaben 1 bis 28)
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Farbkodierung: Rot = Fehlerhaft, Grün = Richtig, Gelb = Abgewählt [A]
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 text-xs font-semibold">
+                <span className="flex items-center gap-1.5 text-rose-600">
+                  <span className="w-3 h-3 rounded-full bg-sbsz-red" /> Fehler
+                </span>
+                <span className="flex items-center gap-1.5 text-emerald-600">
+                  <span className="w-3 h-3 rounded-full bg-emerald-500" /> Richtig
+                </span>
+                <span className="flex items-center gap-1.5 text-amber-600">
+                  <span className="w-3 h-3 rounded-full bg-amber-400" /> Abgewählt [A]
+                </span>
+              </div>
+            </div>
+
+            {questionAnalytics.length === 0 ? (
+              <div className="p-8 text-center text-slate-400 text-xs">
+                Noch keine Schülerabgaben für diese Filterauswahl vorhanden.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {questionAnalytics
+                  .filter((item) => (analyticsOnlyProblems ? item.errorRate > 30 : true))
+                  .map((item) => (
+                    <div
+                      key={item.questionNum}
+                      className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2.5 font-bold text-slate-800 min-w-0">
+                          <span className="w-6 h-6 rounded-md bg-sbsz-darkBlue text-white flex items-center justify-center text-[11px] font-mono shrink-0">
+                            {item.questionNum}
+                          </span>
+                          <span className="truncate">{item.topic}</span>
+                          <span className="text-[11px] text-slate-400 font-normal hidden sm:inline">
+                            (PDF S. {item.pageNumber})
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0 font-mono text-xs">
+                          <span className="font-extrabold text-sbsz-red">
+                            {item.errorRate}% Fehler
+                          </span>
+                          <span className="font-bold text-emerald-700 hidden sm:inline">
+                            {item.correctRate}% Richtig
+                          </span>
+                          {item.deselectedRate > 0 && (
+                            <span className="font-bold text-amber-700 hidden md:inline">
+                              {item.deselectedRate}% [A]
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden flex">
+                        <div
+                          style={{ width: `${item.errorRate}%` }}
+                          className="bg-sbsz-red h-full transition-all"
+                          title={`Fehler: ${item.errorRate}%`}
+                        />
+                        <div
+                          style={{ width: `${item.correctRate}%` }}
+                          className="bg-emerald-500 h-full transition-all"
+                          title={`Richtig: ${item.correctRate}%`}
+                        />
+                        <div
+                          style={{ width: `${item.deselectedRate}%` }}
+                          className="bg-amber-400 h-full transition-all"
+                          title={`Abgewählt: ${item.deselectedRate}%`}
+                        />
+                      </div>
+                    </div>
+                  ))}
               </div>
             )}
           </div>

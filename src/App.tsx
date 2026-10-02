@@ -67,6 +67,10 @@ export function App() {
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Drill-Training State (Feature 2)
+  const [drillMode, setDrillMode] = useState<boolean>(false);
+  const [drillQuestions, setDrillQuestions] = useState<number[]>([]);
+
   // Initial load
   useEffect(() => {
     const session = getCurrentStudentSession();
@@ -277,6 +281,24 @@ export function App() {
     }
   };
 
+  // Start targeted drill training on wrong questions
+  const handleStartDrillMode = (wrongQList: number[]) => {
+    setDrillQuestions(wrongQList);
+    setDrillMode(true);
+    setActiveView('exam');
+    if (wrongQList.length > 0) {
+      const firstQ = wrongQList[0];
+      const qDef = activeExam.questions.find((q) => q.number === firstQ);
+      const targetPage = qDef?.pageNumber || 3;
+      handleJumpToPage(targetPage);
+    }
+  };
+
+  const handleExitDrillMode = () => {
+    setDrillMode(false);
+    setActiveView('result');
+  };
+
   // Student Auth Handlers according to school-student-auth skill
   const handleLoginWithCode = async (code: string) => {
     const student = await loginWithStudentCode(code);
@@ -350,7 +372,10 @@ export function App() {
           <StudentResultView
             exam={activeExam}
             submission={currentSubmission}
-            onRetakeExam={() => setActiveView('exam')}
+            onRetakeExam={() => {
+              setDrillMode(false);
+              setActiveView('exam');
+            }}
             onJumpToPdfPage={(pageNum) => {
               setCurrentPage(pageNum);
               setActiveView('exam');
@@ -365,6 +390,7 @@ export function App() {
               }
             }}
             onOpenFeedbackOverview={() => setShowFeedbackModal(true)}
+            onStartDrillMode={handleStartDrillMode}
           />
         ) : (
           /* ========================================================= */
@@ -509,6 +535,9 @@ export function App() {
                   onJumpToPage={handleJumpToPage}
                   lastSavedAt={lastSavedAt}
                   isSaving={isSaving}
+                  drillMode={drillMode}
+                  drillQuestions={drillQuestions}
+                  onExitDrillMode={handleExitDrillMode}
                 />
               </div>
             </div>

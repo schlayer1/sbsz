@@ -27,6 +27,7 @@ interface StudentResultViewProps {
   exams?: ExamDefinition[];
   onSelectSubmissionExam?: (examId: string) => void;
   onOpenFeedbackOverview?: () => void;
+  onStartDrillMode?: (wrongQuestions: number[]) => void;
 }
 
 export const StudentResultView: React.FC<StudentResultViewProps> = ({
@@ -38,6 +39,7 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
   exams = [],
   onSelectSubmissionExam,
   onOpenFeedbackOverview,
+  onStartDrillMode,
 }) => {
   // Falls die Einreichung noch kein vollständiges score-Objekt hat, dynamisch und stabil berechnen
   const score = useMemo(() => {
@@ -50,6 +52,15 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
     }
     return calculateIhkScore(exam, submission.answers || {}, submission.deselected || []);
   }, [submission.score, submission.answers, submission.deselected, exam]);
+
+  // Liste aller fehlerhaften Aufgaben für den gezielten Drill-Modus
+  const wrongQuestions = useMemo(() => {
+    if (!score || !score.questionEvaluations) return [];
+    return Object.entries(score.questionEvaluations)
+      .filter(([_, evalData]) => !evalData.isCorrect && !evalData.isDeselected)
+      .map(([qNum]) => Number(qNum))
+      .sort((a, b) => a - b);
+  }, [score]);
 
   // Confetti exakt einmal pro Einreichungs-ID auslösen, um Re-render Loop / UI Freezes zu verhindern
   const confettiTriggeredRef = useRef<string | null>(null);
@@ -122,6 +133,16 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
             <Printer className="w-4 h-4" />
             <span>Ergebnis drucken</span>
           </button>
+          {wrongQuestions.length > 0 && onStartDrillMode && (
+            <button
+              onClick={() => onStartDrillMode(wrongQuestions)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-extrabold bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white transition-all shadow-md animate-pulse cursor-pointer"
+              title="Gezielt nur die falschen Aufgaben mit Sofort-Feedback wiederholen"
+            >
+              <Sparkles className="w-4 h-4 text-amber-100" />
+              <span>Fehler gezielt trainieren ({wrongQuestions.length})</span>
+            </button>
+          )}
           <button
             onClick={onRetakeExam}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-sbsz-blue hover:bg-sbsz-darkBlue text-white transition-colors shadow"
@@ -291,6 +312,37 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
           <span className="text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-xl font-medium shrink-0">
             Status: Zur Durchsicht beim Fachlehrer
           </span>
+        </div>
+      )}
+
+      {/* Drill-Training Banner */}
+      {wrongQuestions.length > 0 && onStartDrillMode && (
+        <div className="bg-gradient-to-r from-amber-50 via-amber-100/70 to-amber-50 border-2 border-amber-300 rounded-2xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 shadow-sm">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black text-xl shadow-md shrink-0">
+              🎯
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-black text-sm sm:text-base text-amber-950">
+                  Gezielter Fehler-Wiederholungsmodus
+                </h4>
+                <span className="bg-amber-200 text-amber-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Empfohlen
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/90 mt-0.5">
+                Du hast <strong>{wrongQuestions.length} Aufgaben</strong> noch nicht richtig gelöst. Trainiere jetzt gezielt nur diese Aufgaben mit sofortiger Lösungsrückmeldung!
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onStartDrillMode(wrongQuestions)}
+            className="bg-amber-600 hover:bg-amber-700 text-white font-extrabold px-5 py-2.5 rounded-xl text-xs sm:text-sm shadow-md transition-all flex items-center gap-2 cursor-pointer shrink-0"
+          >
+            <Sparkles className="w-4 h-4 text-amber-200" />
+            <span>Fehler jetzt trainieren ({wrongQuestions.length} Aufgaben)</span>
+          </button>
         </div>
       )}
 
