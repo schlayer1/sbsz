@@ -23,6 +23,10 @@ interface StudentResultViewProps {
   submission: ExamSubmission;
   onRetakeExam: () => void;
   onJumpToPdfPage: (page: number) => void;
+  studentSubmissions?: ExamSubmission[];
+  exams?: ExamDefinition[];
+  onSelectSubmissionExam?: (examId: string) => void;
+  onOpenFeedbackOverview?: () => void;
 }
 
 export const StudentResultView: React.FC<StudentResultViewProps> = ({
@@ -30,6 +34,10 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
   submission,
   onRetakeExam,
   onJumpToPdfPage,
+  studentSubmissions = [],
+  exams = [],
+  onSelectSubmissionExam,
+  onOpenFeedbackOverview,
 }) => {
   // Falls die Einreichung noch kein vollständiges score-Objekt hat, dynamisch und stabil berechnen
   const score = useMemo(() => {
@@ -124,6 +132,52 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
         </div>
       </div>
 
+      {/* Multi-Submission & Feedback Switcher Bar */}
+      {studentSubmissions.length > 1 && (
+        <div className="bg-white p-3.5 sm:px-5 rounded-2xl border border-slate-200 shadow-xs flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+              Ihre abgegebenen Prüfungsbögen:
+            </span>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {studentSubmissions.map((s) => {
+                const ex = exams.find((e) => e.id === s.examId);
+                const isCurrent = s.examId === exam.id;
+                const hasFb = Boolean(s.feedback && s.feedback.isSent);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => onSelectSubmissionExam?.(s.examId)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      isCurrent
+                        ? 'bg-sbsz-blue text-white shadow-xs'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <span>{ex?.examCode || ex?.title || s.examId}</span>
+                    <span className="font-mono opacity-90">({s.score?.percentage || 0}%)</span>
+                    {hasFb && (
+                      <span className="w-2 h-2 rounded-full bg-amber-400" title="Feedback vorhanden" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {onOpenFeedbackOverview && (
+            <button
+              type="button"
+              onClick={onOpenFeedbackOverview}
+              className="text-xs text-sbsz-blue hover:text-sbsz-darkBlue font-bold flex items-center gap-1 underline cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>Alle Feedbacks in Übersicht öffnen</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* KPI Cards Hero */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Score & Grade */}
@@ -186,9 +240,12 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
                 <h3 className="font-extrabold text-base sm:text-lg text-slate-900">
                   Individuelles Lern-Feedback von Ihrem Fachlehrer
                 </h3>
-                <p className="text-xs text-sbsz-darkBlue">
-                  Erstellt mit Unterstützung des SBSZ KI-Prüfungscoaches (Google Gemini)
-                </p>
+                {feedback.sentAt && (
+                  <p className="text-xs text-slate-500">
+                    Freigegeben am {new Date(feedback.sentAt).toLocaleDateString('de-DE')} um{' '}
+                    {new Date(feedback.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} Uhr
+                  </p>
+                )}
               </div>
             </div>
             <span className="bg-emerald-100 text-emerald-800 text-xs font-bold px-2.5 py-1 rounded-full hidden sm:inline-block">

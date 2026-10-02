@@ -576,6 +576,18 @@ export async function getAllSubmissions(): Promise<ExamSubmission[]> {
   return localList;
 }
 
+export async function getAllSubmissionsForStudent(studentId: string, studentCode?: string): Promise<ExamSubmission[]> {
+  const all = await getAllSubmissions();
+  const normalizedCode = studentCode ? studentCode.toUpperCase() : '';
+  return all.filter((s) => {
+    if (s.studentId === studentId) return true;
+    if (normalizedCode && (s.studentCode?.toUpperCase() === normalizedCode || s.studentId.toUpperCase() === normalizedCode)) {
+      return true;
+    }
+    return false;
+  }).sort((a, b) => (b.submittedAt || b.updatedAt || 0) - (a.submittedAt || a.updatedAt || 0));
+}
+
 function getLocalSubmissions(): ExamSubmission[] {
   try {
     const raw = localStorage.getItem(LOCAL_SUBMISSIONS_CACHE_KEY);

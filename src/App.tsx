@@ -6,6 +6,7 @@ import { StudentResultView } from './components/StudentResultView';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentAuthModal } from './components/StudentAuthModal';
 import { TeacherAuthModal } from './components/TeacherAuthModal';
+import { StudentFeedbackModal } from './components/StudentFeedbackModal';
 import { SAMPLE_IHK_EXAM } from './data/sampleExam';
 import {
   ExamDefinition,
@@ -19,6 +20,7 @@ import {
   logoutCurrentStudent,
   getExams,
   getStudentSubmission,
+  getAllSubmissionsForStudent,
   saveExamSubmission,
   getAllStudents,
 } from './services/firebase';
@@ -41,6 +43,22 @@ export function App() {
   const [exams, setExams] = useState<ExamDefinition[]>([SAMPLE_IHK_EXAM]);
   const [activeExam, setActiveExam] = useState<ExamDefinition>(SAMPLE_IHK_EXAM);
   const [currentSubmission, setCurrentSubmission] = useState<ExamSubmission | null>(null);
+  const [studentSubmissions, setStudentSubmissions] = useState<ExamSubmission[]>([]);
+  const [showFeedbackModal, setShowFeedbackModal] = useState<boolean>(false);
+
+  // Helper to load all submissions for current student (multi-exam feedback support)
+  const loadAllStudentSubmissions = async (st: StudentProfile | null) => {
+    if (!st) {
+      setStudentSubmissions([]);
+      return;
+    }
+    try {
+      const allSubs = await getAllSubmissionsForStudent(st.id, st.studentCode);
+      setStudentSubmissions(allSubs);
+    } catch (err) {
+      console.warn('[App] Fehler beim Laden aller Schüler-Abgaben:', err);
+    }
+  };
 
   // Student Examination State
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -115,7 +133,10 @@ export function App() {
     // Das verhindert unnötige Server-Anfragen, UI-Freezes und State-Überschreibungen während der Schüler tippt.
     let interval: any = null;
     if (currentSubmission?.status === 'abgegeben' && !currentSubmission?.feedback?.isSent) {
-      interval = setInterval(fetchSubmission, 4000);
+      interval = setInterval(() => {
+        fetchSubmission();
+        if (currentStudent) loadAllStudentSubmissions(currentStudent);
+      }, 4000);
     }
 
     return () => {
@@ -123,6 +144,11 @@ export function App() {
       if (interval) clearInterval(interval);
     };
   }, [currentStudent, activeExam, currentSubmission?.status, currentSubmission?.feedback?.isSent]);
+
+  // Load all submissions for student on login / switch
+  useEffect(() => {
+    loadAllStudentSubmissions(currentStudent);
+  }, [currentStudent]);
 
   // Debounced Auto-Save
   const saveTimeoutRef = useRef<any>(null);
@@ -239,6 +265,7 @@ export function App() {
     setCurrentSubmission(completedSub);
     setLastSavedAt(now);
     setActiveView('result');
+    await loadAllStudentSubmissions(currentStudent);
   };
 
   // Jump to page helper
@@ -269,6 +296,7 @@ export function App() {
     logoutCurrentStudent();
     setCurrentStudent(null);
     setCurrentSubmission(null);
+    setStudentSubmissions([]);
     setAnswers({});
     setDeselected([]);
     setActiveView('exam');
@@ -291,6 +319,8 @@ export function App() {
         setActiveView={setActiveView}
         hasSubmission={currentSubmission?.status === 'abgegeben'}
         hasFeedback={Boolean(currentSubmission?.feedback?.isSent)}
+        totalFeedbackCount={studentSubmissions.filter((s) => s.feedback?.isSent).length}
+        onOpenFeedbackOverview={() => setShowFeedbackModal(true)}
       />
 
       {/* Main Content Area */}
@@ -326,6 +356,15 @@ export function App() {
               setActiveView('exam');
               setMobileTab('pdf');
             }}
+            studentSubmissions={studentSubmissions}
+            exams={exams}
+            onSelectSubmissionExam={(examId) => {
+              const target = exams.find((e) => e.id === examId);
+              if (target) {
+                setActiveExam(target);
+              }
+            }}
+            onOpenFeedbackOverview={() => setShowFeedbackModal(true)}
           />
         ) : (
           /* ========================================================= */
@@ -500,6 +539,25 @@ export function App() {
           setShowStudentModal(false);
         }}
       />
+
+      {/* Student Feedback Overview Modal (All Submissions & Feedbacks) */}
+      {currentStudent && (
+        <StudentFeedbackModal
+          isOpen={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          currentStudent={currentStudent}
+          submissions={studentSubmissions}
+          exams={exams}
+          onSelectSubmissionExam={(examId) => {
+            const target = exams.find((e) => e.id === examId);
+            if (target) {
+              setActiveExam(target);
+              setActiveView('result');
+              setShowFeedbackModal(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -32,7 +32,13 @@ import {
   Upload,
   Image,
   Loader2,
+  ChevronDown,
+  ChevronUp,
+  MessageSquare,
+  Clock,
+  BookOpen,
 } from 'lucide-react';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import {
   ExamDefinition,
   StudentProfile,
@@ -105,6 +111,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [aiError, setAiError] = useState<string | null>(null);
   const [feedbackSentSuccess, setFeedbackSentSuccess] = useState(false);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [detailModalTab, setDetailModalTab] = useState<'questions' | 'feedback'>('questions');
+  const [geminiSubTab, setGeminiSubTab] = useState<'create' | 'sent'>('create');
+  const [sentFeedbackSearch, setSentFeedbackSearch] = useState('');
+  const [expandedSentFeedbackId, setExpandedSentFeedbackId] = useState<string | null>(null);
 
   // Firebase Config Form
   const [fbConfig, setFbConfig] = useState<FirebaseCustomConfig>({
@@ -246,6 +256,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     await sendFeedbackToStudent(selectedSubmission.id, teacherFeedback);
     setFeedbackSentSuccess(true);
     await loadData();
+  };
+
+  const handleEditExistingFeedback = (sub: ExamSubmission) => {
+    setSelectedSubmission(sub);
+    setAiFeedbackDraft(sub.feedback?.text || '');
+    setAiError(null);
+    setFeedbackSentSuccess(false);
+    setActiveTab('gemini');
+    setGeminiSubTab('create');
   };
 
   const handleToggleExamActive = async (exam: ExamDefinition) => {
@@ -871,28 +890,53 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           </td>
                           <td className="p-3 sm:px-4">
                             {hasFeedback ? (
-                              <span className="text-emerald-700 text-xs font-semibold flex items-center gap-1">
-                                <Check className="w-3.5 h-3.5" /> Versendet
-                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSubmission(sub);
+                                  setDetailModalTab('feedback');
+                                }}
+                                className="text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-lg text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Gesendetes Feedback für diesen Schüler ansehen"
+                              >
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Versendet (ansehen)</span>
+                              </button>
                             ) : (
                               <span className="text-slate-400 text-xs">Ausstehend</span>
                             )}
                           </td>
                           <td className="p-3 sm:px-4 text-right space-x-1.5 whitespace-nowrap">
                             <button
-                              onClick={() => setSelectedSubmission(sub)}
+                              onClick={() => {
+                                setSelectedSubmission(sub);
+                                setDetailModalTab('questions');
+                              }}
                               className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition-colors"
                               title="Bogen ansehen"
                             >
                               Details
                             </button>
+                            {hasFeedback && (
+                              <button
+                                onClick={() => {
+                                  setSelectedSubmission(sub);
+                                  setDetailModalTab('feedback');
+                                }}
+                                className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs border border-emerald-200 transition-colors inline-flex items-center gap-1"
+                                title="Gesendetes Feedback für diesen Schüler ansehen"
+                              >
+                                <Sparkles className="w-3 h-3 text-emerald-600" />
+                                <span>Feedback</span>
+                              </button>
+                            )}
                             <button
                               onClick={() => {
                                 setActiveTab('gemini');
                                 handleGenerateFeedback(sub);
                               }}
                               className="px-2.5 py-1 rounded-lg bg-sbsz-lightBlue hover:bg-sbsz-blue hover:text-white text-sbsz-darkBlue font-bold text-xs transition-colors"
-                              title="KI-Feedback erstellen"
+                              title="KI-Feedback erstellen oder überarbeiten"
                             >
                               KI-Coach
                             </button>
@@ -1309,8 +1353,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
       {/* TAB 4: KI-FEEDBACK (GEMINI) */}
       {activeTab === 'gemini' && (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 sm:p-6 space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-sbsz-blue text-white flex items-center justify-center shadow">
                 <Sparkles className="w-5 h-5 text-sbsz-cyan" />
@@ -1320,100 +1364,284 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   SBSZ Didaktik-Coach (Google Gemini)
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Erstellt personalisierte Stärken-, Schwächen- und Tabellenbuch-Empfehlungen
+                  Personalisierte Stärken-, Schwächen- und Tabellenbuch-Empfehlungen erstellen und verwalten
                 </p>
               </div>
             </div>
 
-            {selectedSubmission && (
+            {selectedSubmission && geminiSubTab === 'create' && (
               <span className="bg-sbsz-lightBlue text-sbsz-darkBlue border border-sbsz-borderBlue text-xs font-bold px-3 py-1 rounded-xl">
                 Ausgewählt: {selectedSubmission.studentName} ({selectedSubmission.className})
               </span>
             )}
           </div>
 
-          {!selectedSubmission ? (
-            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 text-center space-y-3">
-              <p className="text-sm font-semibold text-slate-700">
-                Wähle einen Schüler aus, um ein individuelles Feedback zu generieren:
-              </p>
-              <div className="flex flex-wrap justify-center gap-2 max-w-xl mx-auto">
-                {submissions.map((sub) => (
-                  <button
-                    key={sub.id}
-                    onClick={() => handleGenerateFeedback(sub)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-sbsz-lightBlue text-slate-800 border border-slate-300 shadow-sm transition-all"
-                  >
-                    {sub.studentName} ({sub.className})
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {aiError && (
-                <div className="bg-sbsz-lightRed border border-red-200 text-sbsz-darkRed text-xs p-3 rounded-xl flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-sbsz-red" />
-                  <span>{aiError}</span>
-                </div>
-              )}
+          {/* Sub-tab Navigation */}
+          <div className="flex border-b border-slate-200 gap-4">
+            <button
+              onClick={() => setGeminiSubTab('create')}
+              className={`pb-2.5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+                geminiSubTab === 'create'
+                  ? 'border-sbsz-blue text-sbsz-blue'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Feedback erstellen & bearbeiten</span>
+            </button>
+            <button
+              onClick={() => setGeminiSubTab('sent')}
+              className={`pb-2.5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+                geminiSubTab === 'sent'
+                  ? 'border-sbsz-blue text-sbsz-blue'
+                  : 'border-transparent text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Gesendete Feedbacks ({submissions.filter((s) => s.feedback?.isSent).length})</span>
+            </button>
+          </div>
 
-              {feedbackSentSuccess && (
-                <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-xl flex items-center gap-2">
-                  <Check className="w-4 h-4 shrink-0 text-emerald-600" />
-                  <span>
-                    Feedback erfolgreich freigegeben! Der Schüler sieht es sofort in seinem Portal.
-                  </span>
-                </div>
-              )}
-
-              {isGeneratingAi ? (
-                <div className="p-8 text-center space-y-3 bg-slate-50 rounded-xl border border-slate-200">
-                  <Sparkles className="w-8 h-8 text-sbsz-blue mx-auto animate-pulse" />
-                  <p className="text-sm font-bold text-slate-800">
-                    Gemini analysiert die Fehler des Schülers...
+          {/* Sub-tab: Create Feedback */}
+          {geminiSubTab === 'create' && (
+            <>
+              {!selectedSubmission ? (
+                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 text-center space-y-3">
+                  <p className="text-sm font-semibold text-slate-700">
+                    Wähle einen Schüler aus, um ein individuelles Feedback zu generieren:
                   </p>
-                  <p className="text-xs text-slate-500">
-                    Kaskadenabfrage an gemini-flash-lite-latest läuft.
-                  </p>
+                  <div className="flex flex-wrap justify-center gap-2 max-w-xl mx-auto">
+                    {submissions.map((sub) => (
+                      <button
+                        key={sub.id}
+                        onClick={() => handleGenerateFeedback(sub)}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-sbsz-lightBlue text-slate-800 border border-slate-300 shadow-sm transition-all flex items-center gap-1.5"
+                      >
+                        <span>
+                          {sub.studentName} ({sub.className})
+                        </span>
+                        {sub.feedback?.isSent && (
+                          <span
+                            className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"
+                            title="Feedback bereits versendet"
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs text-slate-500">
-                    <span className="font-bold uppercase tracking-wider text-slate-700">
-                      Entwurf für {selectedSubmission.studentName}:
-                    </span>
-                    <span>Sie können den Text vor dem Versenden frei anpassen</span>
-                  </div>
+                <div className="space-y-4">
+                  {aiError && (
+                    <div className="bg-sbsz-lightRed border border-red-200 text-sbsz-darkRed text-xs p-3 rounded-xl flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-sbsz-red" />
+                      <span>{aiError}</span>
+                    </div>
+                  )}
 
-                  <textarea
-                    rows={12}
-                    value={aiFeedbackDraft}
-                    onChange={(e) => setAiFeedbackDraft(e.target.value)}
-                    placeholder="Das generierte Feedback erscheint hier..."
-                    className="w-full p-4 rounded-xl border border-slate-300 font-sans text-xs sm:text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-sbsz-blue bg-slate-50"
-                  />
+                  {feedbackSentSuccess && (
+                    <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs p-3 rounded-xl flex items-center gap-2">
+                      <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+                      <span>
+                        Feedback erfolgreich freigegeben! Der Schüler sieht es sofort in seinem Portal.
+                      </span>
+                    </div>
+                  )}
 
-                  <div className="flex items-center justify-between gap-3 pt-2">
-                    <button
-                      onClick={() => handleGenerateFeedback(selectedSubmission)}
-                      className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Neu generieren</span>
-                    </button>
+                  {isGeneratingAi ? (
+                    <div className="p-8 text-center space-y-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <Sparkles className="w-8 h-8 text-sbsz-blue mx-auto animate-pulse" />
+                      <p className="text-sm font-bold text-slate-800">
+                        Gemini analysiert die Fehler des Schülers...
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Kaskadenabfrage an gemini-flash-lite-latest läuft.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-xs text-slate-500">
+                        <span className="font-bold uppercase tracking-wider text-slate-700">
+                          Entwurf für {selectedSubmission.studentName}:
+                        </span>
+                        <span>Sie können den Text vor dem Versenden frei anpassen</span>
+                      </div>
 
-                    <button
-                      onClick={handleSendFeedback}
-                      disabled={!aiFeedbackDraft.trim()}
-                      className="px-5 py-2.5 rounded-xl bg-sbsz-red hover:bg-sbsz-darkRed text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
-                    >
-                      <Send className="w-4 h-4" />
-                      <span>An Schüler freigeben & senden</span>
-                    </button>
-                  </div>
+                      <textarea
+                        rows={12}
+                        value={aiFeedbackDraft}
+                        onChange={(e) => setAiFeedbackDraft(e.target.value)}
+                        placeholder="Das generierte Feedback erscheint hier..."
+                        className="w-full p-4 rounded-xl border border-slate-300 font-sans text-xs sm:text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-sbsz-blue bg-slate-50"
+                      />
+
+                      <div className="flex items-center justify-between gap-3 pt-2">
+                        <button
+                          onClick={() => handleGenerateFeedback(selectedSubmission)}
+                          className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Neu generieren</span>
+                        </button>
+
+                        <button
+                          onClick={handleSendFeedback}
+                          disabled={!aiFeedbackDraft.trim()}
+                          className="px-5 py-2.5 rounded-xl bg-sbsz-red hover:bg-sbsz-darkRed text-white text-xs sm:text-sm font-extrabold flex items-center gap-2 shadow-md transition-all disabled:opacity-50"
+                        >
+                          <Send className="w-4 h-4" />
+                          <span>An Schüler freigeben & senden</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
+            </>
+          )}
+
+          {/* Sub-tab: Sent Feedbacks Archive */}
+          {geminiSubTab === 'sent' && (
+            <div className="space-y-4">
+              {/* Search bar */}
+              <div className="relative w-full sm:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Feedback suchen (Schüler, Text, Klasse)..."
+                  value={sentFeedbackSearch}
+                  onChange={(e) => setSentFeedbackSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
+                />
+              </div>
+
+              {(() => {
+                const sentList = submissions.filter((s) => s.feedback && s.feedback.isSent);
+                const filteredSent = sentList.filter((s) => {
+                  if (!sentFeedbackSearch.trim()) return true;
+                  const q = sentFeedbackSearch.toLowerCase();
+                  return (
+                    s.studentName.toLowerCase().includes(q) ||
+                    s.className.toLowerCase().includes(q) ||
+                    (s.feedback?.text && s.feedback.text.toLowerCase().includes(q))
+                  );
+                });
+
+                if (sentList.length === 0) {
+                  return (
+                    <div className="p-8 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
+                      <MessageSquare className="w-8 h-8 text-slate-300 mx-auto" />
+                      <p className="font-bold text-slate-700">Noch keine Feedbacks versendet</p>
+                      <p className="text-xs text-slate-400">
+                        Wechseln Sie auf &quot;Feedback erstellen&quot;, um für abgegebene Schülerarbeiten individuelle Rückmeldungen zu verfassen.
+                      </p>
+                    </div>
+                  );
+                }
+
+                if (filteredSent.length === 0) {
+                  return (
+                    <div className="p-6 text-center text-slate-500 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+                      Keine gesendeten Feedbacks für den Suchbegriff &quot;{sentFeedbackSearch}&quot; gefunden.
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-3">
+                    {filteredSent.map((sub) => {
+                      const isExpanded = expandedSentFeedbackId === sub.id;
+                      const matchedExam = exams.find((e) => e.id === sub.examId);
+                      return (
+                        <div
+                          key={sub.id}
+                          className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden transition-all hover:border-slate-300"
+                        >
+                          <div
+                            onClick={() =>
+                              setExpandedSentFeedbackId(isExpanded ? null : sub.id)
+                            }
+                            className="p-4 bg-slate-50/70 cursor-pointer flex flex-wrap items-center justify-between gap-3 select-none"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-900 text-sm">
+                                    {sub.studentName}
+                                  </span>
+                                  <span className="bg-sbsz-lightBlue text-sbsz-darkBlue text-[11px] font-bold px-2 py-0.5 rounded border border-sbsz-borderBlue">
+                                    {sub.className}
+                                  </span>
+                                  {sub.score && (
+                                    <span className="text-[11px] font-bold text-slate-600">
+                                      Note {sub.score.grade} ({sub.score.percentage}%)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                  {matchedExam?.title || sub.examId} • Gesendet am:{' '}
+                                  {sub.feedback?.sentAt
+                                    ? new Date(sub.feedback.sentAt).toLocaleString('de-DE')
+                                    : '—'}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditExistingFeedback(sub);
+                                }}
+                                className="px-2.5 py-1 text-xs font-bold rounded-lg bg-white hover:bg-slate-100 text-sbsz-blue border border-slate-200 transition-colors flex items-center gap-1"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                                <span>Bearbeiten</span>
+                              </button>
+                              <div className="text-slate-400 p-1">
+                                {isExpanded ? (
+                                  <ChevronUp className="w-4 h-4" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4" />
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {isExpanded && sub.feedback && (
+                            <div className="p-4 border-t border-slate-200 bg-white space-y-3 animate-fade-in text-xs">
+                              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                                <MarkdownRenderer content={sub.feedback.text} />
+                              </div>
+
+                              {sub.feedback.learningTips &&
+                                sub.feedback.learningTips.length > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                    <span className="font-bold text-slate-600 text-[11px]">
+                                      Empfohlene Quellen:
+                                    </span>
+                                    {sub.feedback.learningTips.map((tip, idx) => (
+                                      <span
+                                        key={idx}
+                                        className="bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-semibold px-2 py-0.5 rounded-md"
+                                      >
+                                        {tip}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -1563,36 +1791,151 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </button>
             </div>
 
+            {/* Modal Sub-Tabs */}
+            <div className="flex border-b border-slate-200 bg-slate-50 px-4 sm:px-5 pt-3 gap-3 shrink-0">
+              <button
+                onClick={() => setDetailModalTab('questions')}
+                className={`pb-2.5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+                  detailModalTab === 'questions'
+                    ? 'border-sbsz-blue text-sbsz-blue'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <ListOrdered className="w-4 h-4" />
+                <span>Fragen-Auswertung (1-28)</span>
+              </button>
+
+              <button
+                onClick={() => setDetailModalTab('feedback')}
+                className={`pb-2.5 text-xs sm:text-sm font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+                  detailModalTab === 'feedback'
+                    ? 'border-sbsz-blue text-sbsz-blue'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Gesendetes Feedback</span>
+                {selectedSubmission.feedback?.isSent ? (
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-extrabold px-1.5 py-0.2 rounded-full">
+                    Aktiv
+                  </span>
+                ) : (
+                  <span className="bg-slate-200 text-slate-600 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                    Offen
+                  </span>
+                )}
+              </button>
+            </div>
+
             <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 text-xs">
-              {selectedSubmission.score ? (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {Array.from({ length: 28 }, (_, i) => i + 1).map((qNum) => {
-                    const evalData = selectedSubmission.score?.questionEvaluations?.[qNum];
-                    return (
-                      <div
-                        key={qNum}
-                        className={`p-2 rounded-xl border flex items-center justify-between ${
-                          evalData?.isDeselected
-                            ? 'bg-amber-50 border-amber-200 text-amber-800'
-                            : evalData?.isCorrect
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                            : 'bg-sbsz-lightRed border-red-200 text-sbsz-darkRed font-black'
-                        }`}
-                      >
-                        <span className="font-bold">Aufg. {qNum}</span>
-                        <span className="font-mono font-black">
-                          {evalData?.isDeselected
-                            ? '[A]'
-                            : evalData && evalData.studentAnswer !== null && evalData.studentAnswer !== undefined
-                            ? evalData.studentAnswer
-                            : '—'}
+              {detailModalTab === 'questions' ? (
+                selectedSubmission.score ? (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map((qNum) => {
+                      const evalData = selectedSubmission.score?.questionEvaluations?.[qNum];
+                      return (
+                        <div
+                          key={qNum}
+                          className={`p-2 rounded-xl border flex items-center justify-between ${
+                            evalData?.isDeselected
+                              ? 'bg-amber-50 border-amber-200 text-amber-800'
+                              : evalData?.isCorrect
+                              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                              : 'bg-sbsz-lightRed border-red-200 text-sbsz-darkRed font-black'
+                          }`}
+                        >
+                          <span className="font-bold">Aufg. {qNum}</span>
+                          <span className="font-mono font-black">
+                            {evalData?.isDeselected
+                              ? '[A]'
+                              : evalData &&
+                                evalData.studentAnswer !== null &&
+                                evalData.studentAnswer !== undefined
+                              ? evalData.studentAnswer
+                              : '—'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-slate-500">
+                    Dieser Schüler hat den Bogen noch nicht abgeschlossen.
+                  </p>
+                )
+              ) : (
+                /* Feedback View in Modal */
+                <div className="space-y-3">
+                  {selectedSubmission.feedback?.isSent ? (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-xl">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                          <span className="font-bold">Feedback ist für den Schüler freigegeben</span>
+                        </div>
+                        <span className="text-[11px] text-emerald-700">
+                          {selectedSubmission.feedback.sentAt
+                            ? new Date(selectedSubmission.feedback.sentAt).toLocaleString('de-DE')
+                            : ''}
                         </span>
                       </div>
-                    );
-                  })}
+
+                      <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                        <MarkdownRenderer content={selectedSubmission.feedback.text} />
+                      </div>
+
+                      {selectedSubmission.feedback.learningTips &&
+                        selectedSubmission.feedback.learningTips.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                            <span className="font-bold text-slate-600 text-[11px]">
+                              Empfohlene Quellen:
+                            </span>
+                            {selectedSubmission.feedback.learningTips.map((tip, idx) => (
+                              <span
+                                key={idx}
+                                className="bg-blue-50 text-blue-800 border border-blue-200 text-[11px] font-semibold px-2 py-0.5 rounded-md"
+                              >
+                                {tip}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            handleEditExistingFeedback(selectedSubmission);
+                          }}
+                          className="w-full py-2 bg-sbsz-blue hover:bg-sbsz-darkBlue text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          <span>Feedback im KI-Coach bearbeiten oder neu verfassen</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center space-y-3 bg-slate-50 rounded-xl border border-slate-200">
+                      <Sparkles className="w-8 h-8 text-sbsz-blue mx-auto" />
+                      <p className="font-bold text-slate-800">
+                        Noch kein Feedback für diesen Schüler versendet
+                      </p>
+                      <p className="text-xs text-slate-500 max-w-md mx-auto">
+                        Generieren Sie mit dem SBSZ Didaktik-Coach ein individuelles Feedback auf Basis der Fehler und Stärken.
+                      </p>
+                      <button
+                        onClick={() => {
+                          handleGenerateFeedback(selectedSubmission);
+                          setActiveTab('gemini');
+                          setGeminiSubTab('create');
+                        }}
+                        className="px-4 py-2 bg-sbsz-blue hover:bg-sbsz-darkBlue text-white font-bold rounded-xl text-xs inline-flex items-center gap-1.5 shadow transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Jetzt Feedback mit KI generieren</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <p className="text-slate-500">Dieser Schüler hat den Bogen noch nicht abgeschlossen.</p>
               )}
             </div>
 

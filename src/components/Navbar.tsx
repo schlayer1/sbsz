@@ -13,6 +13,8 @@ interface NavbarProps {
   setActiveView: (view: 'exam' | 'result' | 'teacher') => void;
   hasSubmission: boolean;
   hasFeedback?: boolean;
+  totalFeedbackCount?: number;
+  onOpenFeedbackOverview?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -26,6 +28,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveView,
   hasSubmission,
   hasFeedback,
+  totalFeedbackCount,
+  onOpenFeedbackOverview,
 }) => {
   return (
     <header className="bg-sbsz-blue text-white shadow-md sticky top-0 z-40 border-b border-sbsz-navy/40">
@@ -83,7 +87,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               </button>
             )}
 
-            {hasFeedback && (
+            {totalFeedbackCount !== undefined && totalFeedbackCount > 0 ? (
+              <button
+                onClick={onOpenFeedbackOverview}
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-bold bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-sm transition-all cursor-pointer"
+                title={`${totalFeedbackCount} Lehrkraft-Feedback(s) verfügbar`}
+              >
+                <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-950 shrink-0" />
+                <span className="hidden sm:inline">Feedbacks</span>
+                <span className="bg-slate-950 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold">
+                  {totalFeedbackCount}
+                </span>
+              </button>
+            ) : hasFeedback ? (
               <button
                 onClick={() => {
                   setActiveView('result');
@@ -104,7 +120,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 shrink-0" />
                 <span className="hidden sm:inline">Feedback</span>
               </button>
-            )}
+            ) : null}
           </div>
         )}
 
