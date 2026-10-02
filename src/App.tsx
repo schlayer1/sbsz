@@ -275,7 +275,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100">
+    <div className="min-h-screen w-full flex flex-col bg-slate-100 overflow-x-hidden">
       {/* Top Navbar */}
       <Navbar
         currentStudent={currentStudent}
@@ -295,7 +295,7 @@ export function App() {
 
       {/* Main Content Area */}
       <main
-        className={`flex-1 flex flex-col transition-all duration-300 ${
+        className={`flex-1 w-full flex flex-col transition-opacity duration-300 ${
           !currentStudent && !isTeacherMode
             ? 'pointer-events-none select-none opacity-20'
             : ''
@@ -331,7 +331,7 @@ export function App() {
           /* ========================================================= */
           /* VIEW 3: SCHÜLER WORKBENCH (SPLIT-SCREEN PDF & BOGEN) */
           /* ========================================================= */
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 w-full flex flex-col min-h-0">
             {/* Student Welcome / Sign-in Warning Banner if not logged in */}
             {!currentStudent && (
               <div className="bg-blue-900 text-white px-4 py-3 border-b border-blue-950 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm">
@@ -439,7 +439,7 @@ export function App() {
             </div>
 
             {/* Split Screen Workbench Layout */}
-            <div className="flex-1 w-full max-w-[2100px] mx-auto p-2 sm:p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch h-[calc(100vh-130px)]">
+            <div className="flex-1 w-full max-w-[2100px] mx-auto p-2 sm:p-4 lg:p-5 2xl:p-6 grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch min-h-0 h-[calc(100vh-125px)]">
               {/* Left Column: PDF Viewer */}
               <div
                 className={`lg:col-span-6 xl:col-span-7 2xl:col-span-7 h-full ${

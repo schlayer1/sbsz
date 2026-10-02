@@ -45,22 +45,36 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const renderTaskRef = useRef<any>(null);
 
-  // Beobachte Browser- und Containergröße
+  // Beobachte Browser- und Containergröße nur wenn PDF.js Canvas aktiv ist, mit Debounce
   useEffect(() => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !pdfDoc) return;
+    let resizeTimer: any = null;
+
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
-          setContainerSize({
-            width: entry.contentRect.width,
-            height: entry.contentRect.height,
-          });
+          const w = Math.round(entry.contentRect.width);
+          const h = Math.round(entry.contentRect.height);
+
+          if (resizeTimer) clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            setContainerSize((prev) => {
+              if (Math.abs(prev.width - w) < 20 && Math.abs(prev.height - h) < 20) {
+                return prev;
+              }
+              return { width: w, height: h };
+            });
+          }, 150);
         }
       }
     });
+
     observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
+    return () => {
+      observer.disconnect();
+      if (resizeTimer) clearTimeout(resizeTimer);
+    };
+  }, [pdfDoc]);
 
   // Ist es der vorgerenderte Musterprüfungsbogen?
   const isSampleWithImages =
@@ -378,9 +392,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
             </div>
           ) : pdfError ? (
             /* Modus 3: Fallback bei PDF-CORS/Drive-Link - Vollflächig, maximal groß und glasklar lesbar */
-            <div className="w-full h-full flex flex-col items-stretch justify-start min-h-[calc(100vh-210px)]">
+            <div className="w-full h-full flex flex-col items-stretch justify-start min-h-0 flex-1">
               {/* Schlanke, unaufdringliche Statuszeile ohne Platzverlust */}
-              <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 mb-2 flex items-center justify-between text-xs text-slate-300">
+              <div className="bg-slate-900/90 border border-slate-800 rounded-xl px-3 py-1.5 mb-2 flex items-center justify-between text-xs text-slate-300 shrink-0">
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                   <span className="font-medium text-slate-200">Google Drive Vorschau eingebettet</span>
@@ -401,7 +415,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
               </div>
 
               {/* Iframe nimmt 100% der verfügbaren Höhe und Breite ein */}
-              <div className="flex-1 w-full bg-white rounded-xl overflow-hidden shadow-2xl border border-slate-700 min-h-[calc(100vh-250px)]">
+              <div className="flex-1 w-full bg-white rounded-xl overflow-hidden shadow-2xl border border-slate-700 min-h-0">
                 <iframe
                   src={formatPdfEmbedUrl(exam.pdfUrl, currentPage)}
                   title="IHK Prüfungsheft PDF"
