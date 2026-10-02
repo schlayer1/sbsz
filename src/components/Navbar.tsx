@@ -153,6 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           ) : (
             <button
+              type="button"
               onClick={onOpenStudentLogin}
               className="bg-sbsz-red hover:bg-sbsz-darkRed text-white px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-xl text-xs sm:text-sm font-bold shadow transition-all flex items-center gap-1"
             >

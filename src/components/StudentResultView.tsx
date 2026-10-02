@@ -45,13 +45,25 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
   useEffect(() => {
     if (score && score.percentage >= 67 && confettiTriggeredRef.current !== submission.id) {
       confettiTriggeredRef.current = submission.id;
+      // Safari / iOS Canvas Crash Prevention
       try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 },
-        });
-      } catch {}
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => {
+            try {
+              confetti({
+                particleCount: 60,
+                spread: 60,
+                origin: { y: 0.6 },
+                disableForReducedMotion: true,
+              });
+            } catch (canvasErr) {
+              console.warn('[Confetti] Nicht verfügbar oder deaktiviert:', canvasErr);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[Confetti] Ausführung übersprungen:', err);
+      }
     }
   }, [score, submission.id]);
 
@@ -122,7 +134,7 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
             <span className="text-4xl font-black">{score.percentage}%</span>
             <span className="text-sm opacity-90">({score.totalPoints} / {score.maxPoints} Punkte)</span>
           </div>
-          <div className="mt-2 text-xs font-semibold bg-white/20 backdrop-blur-sm px-2.5 py-1 rounded-lg inline-block">
+          <div className="mt-2 text-xs font-semibold bg-white/25 border border-white/20 px-2.5 py-1 rounded-lg inline-block">
             Note {score.grade} ({score.gradeText}) • {isPassed ? 'Bestanden' : 'Nicht bestanden'}
           </div>
         </div>

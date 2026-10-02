@@ -260,18 +260,24 @@ export async function loginWithStudentCode(rawCode: string): Promise<StudentProf
     (s) => formatStudentCode(s.studentCode) === code || s.id.toUpperCase() === code
   );
 
-  // 2. In Firestore suchen
+  // 2. In Firestore suchen (mit 4s Timeout, um bei WebKit/Safari Netzwerk-Hangs nicht einzufrieren)
   if (db) {
     try {
       const colRef = collection(db, STUDENTS_COLLECTION);
       const q = query(colRef, where('studentCode', '==', code));
-      const snap = await getDocs(q);
+      
+      const firestorePromise = getDocs(q);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore Timeout')), 4000)
+      );
 
-      if (!snap.empty) {
+      const snap = (await Promise.race([firestorePromise, timeoutPromise])) as any;
+
+      if (snap && !snap.empty) {
         student = snap.docs[0].data() as StudentProfile;
       }
     } catch (err) {
-      console.warn('[Firebase] Fehler bei der Kürzelsuche in Firestore:', err);
+      console.warn('[Firebase] Kürzelsuche in Firestore fehlgeschlagen oder Timeout:', err);
     }
   }
 

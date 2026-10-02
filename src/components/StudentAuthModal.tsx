@@ -41,6 +41,19 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
     return generateStudentCode(fullName);
   }, [firstName, lastName]);
 
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen && activeTab === 'code') {
+      const timer = setTimeout(() => {
+        try {
+          inputRef.current?.focus();
+        } catch {}
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, activeTab]);
+
   if (!isOpen) return null;
 
   // Handler Tab 1: Code Login
@@ -114,8 +127,9 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
           </div>
           {!preventClose && (
             <button
+              type="button"
               onClick={onClose}
-              className="text-white/80 hover:text-white p-1 rounded-lg transition-colors"
+              className="text-white/80 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -185,8 +199,8 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
                 </label>
                 <div className="relative">
                   <input
+                    ref={inputRef}
                     type="text"
-                    autoFocus
                     maxLength={10}
                     placeholder="KÜRZEL"
                     value={code}
