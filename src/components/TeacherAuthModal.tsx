@@ -33,12 +33,12 @@ export const TeacherAuthModal: React.FC<TeacherAuthModalProps> = ({ isOpen, onCl
       <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200">
         <div className="bg-sbsz-darkBlue text-white p-5 flex items-center justify-between border-b border-sbsz-navy">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow shrink-0">
-              <img src="/sbsz-logo.png" alt="SBSZ Logo" className="w-full h-full object-contain" />
+            <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/20 p-1 flex items-center justify-center shadow shrink-0 text-amber-300">
+              <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base">SBSZ Kollegium</h3>
-              <p className="text-xs text-blue-200">Lehrer-Zugang & Verwaltung</p>
+              <h3 className="font-extrabold text-base">Lehrer-Zugang</h3>
+              <p className="text-xs text-blue-200">Verwaltung & Dashboard</p>
             </div>
           </div>
           <button onClick={onClose} className="text-white/70 hover:text-white p-1 rounded-lg">
@@ -62,14 +62,11 @@ export const TeacherAuthModal: React.FC<TeacherAuthModalProps> = ({ isOpen, onCl
             <input
               type="password"
               autoFocus
-              placeholder="Standard: 1234"
+              placeholder="PIN eingeben"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-center tracking-widest text-lg font-mono focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
             />
-            <p className="text-[11px] text-slate-400 mt-1.5 text-center">
-              Standard-PIN: <span className="font-mono font-bold text-slate-600">1234</span>
-            </p>
           </div>
 
           <button

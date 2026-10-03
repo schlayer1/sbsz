@@ -140,7 +140,7 @@ export async function generateStudentFeedbackWithAI(
     }
   }
 
-  const systemPrompt = `Du bist ein erfahrener Fachlehrer und IHK-Prüfer für den Ausbildungsberuf Zerspanungsmechaniker/-in am Staatlichen Berufsschulzentrum (SBSZ) Jena-Göschwitz.
+  const systemPrompt = `Du bist ein erfahrener Fachlehrer und IHK-Prüfer für den Ausbildungsberuf Zerspanungsmechaniker/-in im Fachbereich Fertigungstechnik.
 Deine Aufgabe ist es, für eine Schülerin bzw. einen Schüler ein pädagogisch fundiertes, sachliches, wertschätzendes und fachlich exaktes Feedback zur bearbeiteten IHK-Abschlussprüfung (Fertigungstechnik) zu erstellen.
 
 WICHTIGE TONALITÄTS- UND STILVORGABEN:
@@ -171,7 +171,7 @@ STRUKTUR DES FEEDBACKS:
    - 3 bis 4 priorisierte Lernschritte bis zur tatsächlichen IHK-Prüfung.
    - Ein verbindliches, ermutigendes Schlusswort.`;
 
-  const userPrompt = `Erstelle ein professionelles, sachlich-pädagogisches IHK-Prüfungsfeedback für folgenden Prüfling am SBSZ Jena-Göschwitz:
+  const userPrompt = `Erstelle ein professionelles, sachlich-pädagogisches IHK-Prüfungsfeedback für folgenden Prüfling:
 
 Prüfling: ${studentName}
 Klasse: ${className}
@@ -260,7 +260,7 @@ export async function generateDidacticTipsForProblems(
 ): Promise<Record<number, DidacticAITipResult>> {
   if (!problems || problems.length === 0) return {};
 
-  const systemPrompt = `Du bist ein erfahrener Fachbereichsleiter und Fachleiter für Fertigungstechnik & Metalltechnik am Staatlichen Berufsschulzentrum (SBSZ) Jena-Göschwitz.
+  const systemPrompt = `Du bist ein erfahrener Fachbereichsleiter und Fachleiter für Fertigungstechnik & Metalltechnik.
 Deine Aufgabe ist es, für eine Kollegin / einen Kollegen präzise, extrem praxisnahe und aufgabenbezogene didaktische Unterrichtstipps für die nächste Unterrichtsstunde zu formulieren, um aufgedeckte Wissenslücken der Klasse gezielt zu schließen.
 
 WICHTIGE ANFORDERUNGEN:

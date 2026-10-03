@@ -99,29 +99,17 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
     }
   };
 
-  const handleSelectRecent = async (s: StudentProfile) => {
-    try {
-      setIsSubmitting(true);
-      await onLoginWithCode(s.studentCode || s.id);
-      onClose();
-    } catch {
-      setError('Fehler bei der Schnell-Anmeldung.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/80 animate-fade-in">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200">
         {/* Header */}
         <div className="bg-sbsz-blue p-5 text-white flex items-center justify-between border-b border-sbsz-darkBlue">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-white p-1 flex items-center justify-center shadow shrink-0">
-              <img src="/sbsz-logo.png" alt="SBSZ Logo" className="w-full h-full object-contain" />
+            <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/20 p-1 flex items-center justify-center shadow shrink-0 text-white">
+              <Key className="w-6 h-6 text-sbsz-cyan" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base sm:text-lg">SBSZ Jena-Göschwitz</h3>
+              <h3 className="font-extrabold text-base sm:text-lg">Prüfungsportal</h3>
               <p className="text-xs text-blue-100">Schüler-Login & Kürzel-System</p>
             </div>
           </div>
@@ -229,28 +217,6 @@ export const StudentAuthModal: React.FC<StudentAuthModalProps> = ({
                   </>
                 )}
               </button>
-
-              {/* Quick recall list if device was used before */}
-              {cachedStudents.length > 0 && (
-                <div className="pt-3 border-t border-slate-100 space-y-2">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Zuletzt auf diesem Gerät:
-                  </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {cachedStudents.slice(0, 4).map((s) => (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => handleSelectRecent(s)}
-                        className="px-2.5 py-1 rounded-lg border border-slate-200 bg-slate-50 hover:bg-sbsz-lightBlue hover:border-sbsz-blue text-xs font-mono font-bold text-slate-700 flex items-center gap-1.5 transition-all"
-                      >
-                        <span className="text-sbsz-blue">{s.studentCode || s.id}</span>
-                        <span className="font-sans font-normal text-slate-500 text-[11px]">({s.firstName})</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </form>
           ) : (
             /* TAB 2: REGISTER & GENERATE CODE */

@@ -99,16 +99,16 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
 
   return (
     <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-5 sm:py-6 space-y-6">
-      {/* Top Banner & Title with SBSZ Jena Branding */}
+      {/* Top Banner & Title with Prüfungsportal Branding */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-white p-1 border border-slate-200 shadow-sm shrink-0 flex items-center justify-center">
-            <img src="/sbsz-logo.png" alt="SBSZ Logo" className="w-full h-full object-contain" />
+          <div className="w-12 h-12 rounded-xl bg-sbsz-lightBlue text-sbsz-blue border border-sbsz-borderBlue shadow-sm shrink-0 flex items-center justify-center">
+            <CheckCircle2 className="w-6 h-6 text-sbsz-blue" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="bg-sbsz-lightBlue text-sbsz-darkBlue text-xs font-bold px-2.5 py-0.5 rounded-full border border-sbsz-borderBlue">
-                SBSZ Jena-Göschwitz • IHK Prüfungsabgabe
+                Prüfungsportal • IHK Prüfungsabgabe
               </span>
               <span className="text-xs text-slate-500">
                 Eingereicht am {new Date(submission.submittedAt || Date.now()).toLocaleDateString('de-DE')} um{' '}
@@ -305,7 +305,7 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
             <div>
               <h4 className="font-bold text-sm text-slate-800">Lehrer-Feedback in Vorbereitung</h4>
               <p className="text-xs text-slate-500">
-                Ihr Fachlehrer am SBSZ wertet Ihre Arbeit aktuell aus. Sobald das individuelle KI-Feedback freigegeben ist, können Sie es hier einsehen.
+                Ihr Fachlehrer wertet Ihre Arbeit aktuell aus. Sobald das individuelle KI-Feedback freigegeben ist, können Sie es hier einsehen.
               </p>
             </div>
           </div>

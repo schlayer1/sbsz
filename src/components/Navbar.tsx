@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, ShieldCheck, LogOut, FileText, CheckCircle2, Sparkles, WifiOff } from 'lucide-react';
+import { User, ShieldCheck, LogOut, FileText, CheckCircle2, Sparkles, WifiOff, BookOpen } from 'lucide-react';
 import { StudentProfile } from '../types/exam';
 
 interface NavbarProps {
@@ -48,26 +48,22 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="bg-sbsz-blue text-white shadow-md sticky top-0 z-40 border-b border-sbsz-navy/40">
       <div className="w-full max-w-[2100px] mx-auto px-2.5 sm:px-4 lg:px-8 xl:px-10 2xl:px-12 py-2 flex items-center justify-between gap-2">
-        {/* Brand / Official SBSZ Logo & Titles */}
+        {/* Brand / Prüfungsportal Logo & Titles */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
-          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white p-1 flex items-center justify-center shadow-md shrink-0 border border-white/20">
-            <img
-              src="/sbsz-logo.png"
-              alt="Logo SBSZ Jena-Göschwitz"
-              className="w-full h-full object-contain"
-            />
+          <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl bg-white/10 border border-white/20 p-1 flex items-center justify-center shadow-md shrink-0 text-white">
+            <BookOpen className="w-5 h-5 sm:w-6 sm:h-6 text-sbsz-cyan" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 sm:gap-2">
               <span className="font-extrabold text-sm sm:text-base lg:text-lg tracking-tight truncate">
-                SBSZ <span className="hidden sm:inline">Jena-Göschwitz</span>
+                Prüfungsportal
               </span>
               <span className="hidden md:inline-block bg-sbsz-darkBlue/80 text-sbsz-cyan text-[11px] px-2 py-0.5 rounded-full font-bold border border-sbsz-cyan/30 shrink-0">
-                IHK Prüfungsportal
+                IHK Prüfungscenter
               </span>
             </div>
             <p className="text-[10px] text-blue-100 hidden lg:block truncate">
-              Staatliches Berufsschulzentrum Jena-Göschwitz • Fachbereich Metalltechnik
+              Digitales Antwort- und Prüfungssystem für Abschlussprüfungen
             </p>
           </div>
         </div>

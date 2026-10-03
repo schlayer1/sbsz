@@ -7,6 +7,7 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
+  writeBatch,
   query,
   where,
   orderBy,
@@ -184,6 +185,29 @@ export async function saveExam(exam: ExamDefinition): Promise<void> {
       console.warn('[Firebase] Konnte Prüfung nicht in Firestore speichern:', err);
     }
   }
+}
+
+export async function deactivateAllExams(): Promise<ExamDefinition[]> {
+  const local = getLocalExams();
+  const updatedList = local.map((e) => ({ ...e, isActive: false }));
+  localStorage.setItem(LOCAL_EXAMS_CACHE_KEY, JSON.stringify(updatedList));
+
+  if (db) {
+    try {
+      const colRef = collection(db, EXAMS_COLLECTION);
+      const snap = await getDocs(colRef);
+      const batch = writeBatch(db);
+      snap.forEach((docSnap) => {
+        batch.update(docSnap.ref, { isActive: false });
+      });
+      await batch.commit();
+      console.log('[Firebase] Alle Prüfungen in Firestore erfolgreich deaktiviert.');
+    } catch (err) {
+      console.warn('[Firebase] Fehler beim Deaktivieren aller Prüfungen in Firestore:', err);
+    }
+  }
+
+  return updatedList;
 }
 
 export async function deleteExam(examId: string): Promise<void> {

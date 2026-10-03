@@ -50,6 +50,7 @@ import {
   getExams,
   saveExam,
   deleteExam,
+  deactivateAllExams,
   getAllStudents,
   getAllSubmissions,
   deleteExamSubmission,
@@ -233,7 +234,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
         sub.score,
         sub.id,
         sub.studentId,
-        'Fachlehrer SBSZ Jena'
+        'Fachlehrer Metalltechnik'
       );
       setAiFeedbackDraft(feedback.text);
     } catch (err: any) {
@@ -259,7 +260,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       generatedAt: Date.now(),
       sentAt: Date.now(),
       isSent: true,
-      teacherName: 'Fachlehrer Metalltechnik SBSZ Jena',
+      teacherName: 'Fachlehrer Metalltechnik',
     };
 
     await sendFeedbackToStudent(selectedSubmission.id, teacherFeedback);
@@ -293,6 +294,27 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     };
     await saveExam(updatedExam);
     setExams((prev) => prev.map((e) => (e.id === exam.id ? updatedExam : e)));
+  };
+
+  const handleDeactivateAllExams = async () => {
+    const activeCount = exams.filter((e) => e.isActive).length;
+    if (activeCount === 0) {
+      alert('Es sind aktuell keine Prüfungshefte aktiv geschaltet.');
+      return;
+    }
+
+    if (!window.confirm(`Möchtest du wirklich alle ${activeCount} aktiven Prüfungshefte mit einem Klick sperren (für Schüler unsichtbar machen)?`)) {
+      return;
+    }
+
+    try {
+      const updated = await deactivateAllExams();
+      setExams(updated);
+    } catch (err) {
+      console.error('Fehler beim Deaktivieren aller Prüfungen:', err);
+      // Fallback state update
+      setExams((prev) => prev.map((e) => ({ ...e, isActive: false })));
+    }
   };
 
   const handleOpenSolutionEditor = (exam: ExamDefinition) => {
@@ -760,16 +782,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
   return (
     <div className="w-full max-w-[2100px] mx-auto px-3 sm:px-6 lg:px-8 xl:px-10 2xl:px-12 py-5 sm:py-6 space-y-6 animate-fade-in">
-      {/* Dashboard Top Header in SBSZ Blue Theme */}
+      {/* Dashboard Top Header in Neutral Prüfungsportal Theme */}
       <div className="bg-gradient-to-r from-sbsz-darkBlue via-sbsz-blue to-sbsz-blue text-white p-5 sm:p-6 rounded-2xl shadow-xl border border-sbsz-navy/40 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-white p-1 shadow-md flex items-center justify-center shrink-0">
-            <img src="/sbsz-logo.png" alt="SBSZ Logo" className="w-full h-full object-contain" />
+          <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 p-1 shadow-md flex items-center justify-center shrink-0 text-amber-300">
+            <ShieldCheck className="w-7 h-7" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl sm:text-2xl font-black tracking-tight">
-                SBSZ Jena-Göschwitz • Lehrer-Dashboard
+                Prüfungsportal • Lehrer-Dashboard
               </h1>
               <span className="bg-white/20 text-white text-xs px-2.5 py-0.5 rounded-full font-bold">
                 Kollegium
@@ -1214,10 +1236,24 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             )}
           </div>
 
-          <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-slate-900 text-base">
-              Aktuell hinterlegte IHK-Prüfungshefte ({exams.length})
-            </h3>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-extrabold text-slate-900 text-base">
+                Aktuell hinterlegte IHK-Prüfungshefte ({exams.length})
+              </h3>
+              <p className="text-xs text-slate-500">
+                {exams.filter((e) => e.isActive).length} von {exams.length} Prüfungsheften für Schüler freigeschaltet
+              </p>
+            </div>
+
+            <button
+              onClick={handleDeactivateAllExams}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+              title="Sperrt alle Prüfungshefte auf einmal, sodass Schüler aktuell keinen Bogen bearbeiten können"
+            >
+              <Lock className="w-3.5 h-3.5 text-rose-600" />
+              <span>Alle Prüfungen sperren (1-Klick-Deaktivierung)</span>
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1372,7 +1408,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 {/* Class Assignment Switches */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-2">
-                    Freigabe für Klassen am SBSZ:
+                    Freigabe für Klassen:
                   </label>
                   <div className="flex flex-wrap gap-1.5">
                     {['Alle', 'ZM22A', 'ZM22B', 'ZM23'].map((cls) => {
@@ -1826,7 +1862,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
               <div>
                 <h3 className="font-extrabold text-base text-slate-900">
-                  SBSZ Didaktik-Coach (Google Gemini)
+                  KI Didaktik-Coach (Google Gemini)
                 </h3>
                 <p className="text-xs text-slate-500">
                   Personalisierte Stärken-, Schwächen- und Tabellenbuch-Empfehlungen erstellen und verwalten
@@ -2118,7 +2154,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
           <div className="bg-gradient-to-r from-sbsz-darkBlue via-sbsz-blue to-sbsz-blue text-white p-5 sm:p-6 rounded-2xl shadow-md space-y-2">
             <div className="flex items-center gap-2 text-sbsz-cyan text-xs font-bold uppercase tracking-wider">
               <Cloud className="w-4 h-4" />
-              <span>SBSZ Jena-Göschwitz Cloud-Speicher Leitfaden</span>
+              <span>Cloud-Speicher Leitfaden & Setup</span>
             </div>
             <h3 className="text-lg font-black tracking-tight">
               Anleitung: 100% kostenloser Cloud-Speicher für IHK-PDFs & Prüfungsergebnisse
@@ -2385,7 +2421,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         Noch kein Feedback für diesen Schüler versendet
                       </p>
                       <p className="text-xs text-slate-500 max-w-md mx-auto">
-                        Generieren Sie mit dem SBSZ Didaktik-Coach ein individuelles Feedback auf Basis der Fehler und Stärken.
+                        Generieren Sie mit dem KI Didaktik-Coach ein individuelles Feedback auf Basis der Fehler und Stärken.
                       </p>
                       <button
                         onClick={() => {

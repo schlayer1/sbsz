@@ -285,7 +285,7 @@ export const StudentFeedbackModal: React.FC<StudentFeedbackModalProps> = ({
 
         {/* Footer */}
         <div className="p-3.5 sm:px-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500 shrink-0">
-          <span>Staatliches Berufsschulzentrum Jena-Göschwitz</span>
+          <span>Prüfungsportal • Feedback-Center</span>
           <button
             type="button"
             onClick={onClose}

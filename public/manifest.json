@@ -1,7 +1,7 @@
 {
-  "name": "SBSZ Jena-Göschwitz | IHK Prüfungsportal",
-  "short_name": "SBSZ Prüfungen",
-  "description": "Digitales Prüfungsportal und Trainingscenter für IHK-Abschlussprüfungen der Staatlichen Berufsbildenden Schule Jena-Göschwitz",
+  "name": "Prüfungsportal | Digitales Prüfungsportal",
+  "short_name": "Prüfungsportal",
+  "description": "Digitales Prüfungsportal und Trainingscenter für Abschlussprüfungen",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -129,7 +129,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
 
   return (
     <div className="bg-white rounded-2xl shadow-xl flex flex-col h-full border border-slate-200 overflow-hidden">
-      {/* Header with SBSZ Jena-Göschwitz Blue */}
+      {/* Header with Prüfungsportal Blue */}
       <div className="bg-gradient-to-r from-sbsz-darkBlue to-sbsz-blue text-white p-3.5 sm:p-4 shrink-0 shadow-md">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -141,7 +141,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
                 </span>
               ) : (
                 <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  SBSZ Jena • IHK Markierungsbogen
+                  Prüfungsportal • IHK Markierungsbogen
                 </span>
               )}
               <span className="text-xs text-sbsz-cyan font-semibold">

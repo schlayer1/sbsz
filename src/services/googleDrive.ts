@@ -1,5 +1,5 @@
 /**
- * Google Drive Synchronisation Service für SBSZ Jena-Göschwitz
+ * Google Drive Synchronisation Service für Prüfungsportal
  * 
  * Synchronisiert automatisch Aufgaben- und Lösungshefte über die
  * Google Apps Script Web-App, ohne von der Google Drive API blockiert zu werden.
