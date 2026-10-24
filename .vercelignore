@@ -1,0 +1,27 @@
+# Dependencies & Caches
+node_modules
+.npm
+.cache
+
+# Heavy Binaries & Archives
+Assets/
+raw_assets/
+*.rar
+*.zip
+*.7z
+*.tar.gz
+
+# Dev & Scratch
+scratch/
+verify_output/
+/*.pdf
+!public/**/*.pdf
+/*.png
+/*.jpg
+!public/**
+
+# Git & System
+.git
+.github
+.DS_Store
+*.log

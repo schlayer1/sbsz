@@ -1,8 +1,25 @@
-node_modules
-dist
-dist-ssr
+# Dependencies
+node_modules/
+
+# Production Build Output
+dist/
+dist-ssr/
+
+# Local Environment & Logs
 *.local
-.env
-.env.*
-!.env.example
+.env*.local
 .DS_Store
+*.log
+
+# Scratch & Audits
+scratch/
+verify_output/
+*.bak
+
+# Raw & Heavy Asset Archives
+Assets/
+raw_assets/
+*.rar
+*.zip
+*.7z
+*.tar.gz
