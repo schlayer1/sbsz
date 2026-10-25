@@ -3,6 +3,7 @@ import { Navbar } from './components/Navbar';
 import { PdfViewer } from './components/PdfViewer';
 import { DigitalAnswerSheet } from './components/DigitalAnswerSheet';
 import { StudentResultView } from './components/StudentResultView';
+import { StudentDashboard } from './components/StudentDashboard';
 import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentAuthModal } from './components/StudentAuthModal';
 import { TeacherAuthModal } from './components/TeacherAuthModal';
@@ -19,17 +20,18 @@ import {
   loginWithStudentCode,
   logoutCurrentStudent,
   getExams,
+  subscribeToExams,
   getStudentSubmission,
   getAllSubmissionsForStudent,
   saveExamSubmission,
   getAllStudents,
 } from './services/firebase';
 import { calculateIhkScore } from './utils/ihkGrader';
-import { FileText, Edit3, User, CheckCircle2, ChevronRight, BookOpen } from 'lucide-react';
+import { FileText, Edit3, User, CheckCircle2, ChevronRight, BookOpen, LayoutGrid, ArrowLeft } from 'lucide-react';
 
 export function App() {
   // Navigation & Mode
-  const [activeView, setActiveView] = useState<'exam' | 'result' | 'teacher'>('exam');
+  const [activeView, setActiveView] = useState<'dashboard' | 'exam' | 'result' | 'teacher'>('dashboard');
   const [mobileTab, setMobileTab] = useState<'pdf' | 'sheet'>('pdf');
   const [isTeacherMode, setIsTeacherMode] = useState(false);
 
@@ -71,7 +73,7 @@ export function App() {
   const [drillMode, setDrillMode] = useState<boolean>(false);
   const [drillQuestions, setDrillQuestions] = useState<number[]>([]);
 
-  // Initial load
+  // Initial load & Echtzeit-Synchronisation der Prüfungen
   useEffect(() => {
     const session = getCurrentStudentSession();
     if (session) {
@@ -80,17 +82,24 @@ export function App() {
       setShowStudentModal(true);
     }
 
-    // Load available exams & student list
-    getExams().then((loaded) => {
+    // Reaktive Echtzeit-Synchronisation aller freigeschalteten Prüfungen
+    const unsubscribeExams = subscribeToExams((loaded) => {
       if (loaded.length > 0) {
         setExams(loaded);
-        setActiveExam(loaded[0]);
+        setActiveExam((prev) => {
+          const found = loaded.find((e) => e.id === prev.id);
+          return found || loaded[0];
+        });
       }
     });
 
     getAllStudents().then((stList) => {
       setCachedStudents(stList);
     });
+
+    return () => {
+      unsubscribeExams();
+    };
   }, []);
 
   // When student or active exam changes, load student's submission / progress
@@ -111,9 +120,6 @@ export function App() {
             setAnswers(sub.answers || {});
             setDeselected(sub.deselected || []);
             setLastSavedAt(sub.updatedAt);
-            if (activeView !== 'result') {
-              setActiveView('result');
-            }
           } else {
             // In progress: populate initial state if not yet loaded
             setAnswers((prev) => (Object.keys(prev).length === 0 ? sub.answers || {} : prev));
@@ -303,6 +309,7 @@ export function App() {
   const handleLoginWithCode = async (code: string) => {
     const student = await loginWithStudentCode(code);
     setCurrentStudent(student);
+    setActiveView('dashboard');
     const updatedList = await getAllStudents();
     setCachedStudents(updatedList);
   };
@@ -310,6 +317,7 @@ export function App() {
   const handleRegisterStudent = async (firstName: string, lastName: string, className: string) => {
     const student = await loginOrCreateStudent(firstName, lastName, className);
     setCurrentStudent(student);
+    setActiveView('dashboard');
     const updatedList = await getAllStudents();
     setCachedStudents(updatedList);
   };
@@ -321,7 +329,7 @@ export function App() {
     setStudentSubmissions([]);
     setAnswers({});
     setDeselected([]);
-    setActiveView('exam');
+    setActiveView('dashboard');
   };
 
   return (
@@ -335,7 +343,7 @@ export function App() {
         onLogoutStudent={handleStudentLogout}
         onExitTeacherMode={() => {
           setIsTeacherMode(false);
-          setActiveView('exam');
+          setActiveView('dashboard');
         }}
         activeView={activeView}
         setActiveView={setActiveView}
@@ -363,8 +371,56 @@ export function App() {
               setIsTeacherMode(false);
               setActiveView('exam');
             }}
-            onClose={() => setIsTeacherMode(false)}
+            onClose={() => {
+              setIsTeacherMode(false);
+              setActiveView('dashboard');
+            }}
+            onExamsChange={(updated) => {
+              setExams(updated);
+            }}
           />
+        ) : activeView === 'dashboard' ? (
+          /* ========================================================= */
+          /* VIEW 1: SCHÜLER PRÜFUNGSDASHBOARD (KACHELN) */
+          /* ========================================================= */
+          currentStudent ? (
+            <StudentDashboard
+              currentStudent={currentStudent}
+              exams={exams}
+              submissions={studentSubmissions}
+              onSelectExam={(exam) => {
+                setActiveExam(exam);
+                setCurrentPage(3);
+                setActiveView('exam');
+              }}
+              onViewResult={(exam, sub) => {
+                setActiveExam(exam);
+                setCurrentSubmission(sub);
+                setActiveView('result');
+              }}
+              onOpenFeedback={(sub) => {
+                setCurrentSubmission(sub);
+                setShowFeedbackModal(true);
+              }}
+              onOpenStudentLogin={() => setShowStudentModal(true)}
+            />
+          ) : (
+            <div className="w-full max-w-xl mx-auto p-8 my-12 bg-white rounded-3xl border border-slate-200 shadow-sm text-center space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-sbsz-lightBlue text-sbsz-blue flex items-center justify-center mx-auto">
+                <User className="w-7 h-7" />
+              </div>
+              <h2 className="text-xl font-black text-slate-800">Bitte als Schüler anmelden</h2>
+              <p className="text-sm text-slate-500">
+                Melde dich mit deinem Vor-, Nachnamen und deiner Klasse an, um deine freigeschalteten Prüfungen zu sehen.
+              </p>
+              <button
+                onClick={() => setShowStudentModal(true)}
+                className="bg-sbsz-blue hover:bg-sbsz-darkBlue text-white px-5 py-2.5 rounded-xl font-bold shadow transition-colors cursor-pointer"
+              >
+                Jetzt anmelden
+              </button>
+            </div>
+          )
         ) : activeView === 'result' && currentSubmission ? (
           /* ========================================================= */
           /* VIEW 2: SCHÜLER ERGEBNIS & AUSWERTUNG */
@@ -391,6 +447,7 @@ export function App() {
             }}
             onOpenFeedbackOverview={() => setShowFeedbackModal(true)}
             onStartDrillMode={handleStartDrillMode}
+            onBackToDashboard={() => setActiveView('dashboard')}
           />
         ) : (
           /* ========================================================= */
@@ -480,12 +537,24 @@ export function App() {
               return (
                 <div className="bg-white border-b border-slate-200 px-3 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-xs">
                   <div className="flex items-center gap-2.5 min-w-0">
+                    <button
+                      onClick={() => setActiveView('dashboard')}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 transition-colors shadow-2xs shrink-0 cursor-pointer"
+                      title="Zurück zur Prüfungsübersicht (Kacheln)"
+                    >
+                      <ArrowLeft className="w-4 h-4 text-sbsz-blue" />
+                      <span className="hidden sm:inline">Alle Prüfungen (Kacheln)</span>
+                      <span className="sm:hidden">Übersicht</span>
+                    </button>
+
+                    <div className="h-6 w-px bg-slate-200 hidden sm:block shrink-0" />
+
                     <div className="w-8 h-8 rounded-lg bg-sbsz-lightBlue text-sbsz-darkBlue flex items-center justify-center shrink-0">
                       <BookOpen className="w-4 h-4 text-sbsz-blue" />
                     </div>
                     <div className="min-w-0">
                       <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">
-                        Prüfungsheft auswählen:
+                        Aktives Prüfungsheft:
                       </div>
                       <div className="flex items-center gap-2">
                         <select
@@ -497,7 +566,7 @@ export function App() {
                               setCurrentPage(3);
                             }
                           }}
-                          className="text-xs sm:text-sm font-extrabold text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-sbsz-blue cursor-pointer truncate max-w-[280px] sm:max-w-md"
+                          className="text-xs sm:text-sm font-extrabold text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-sbsz-blue cursor-pointer truncate max-w-[220px] sm:max-w-md"
                         >
                           {availableExams.map((ex) => (
                             <option key={ex.id} value={ex.id}>

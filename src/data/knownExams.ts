@@ -104,5 +104,17 @@ export function getKnownSolutionsForFile(filename: string): Record<number, numbe
   if (clean.includes('ws25') || clean.includes('wi25') || clean.includes('winter_2025') || clean.includes('w25')) {
     return { ...OFFICIAL_IHK_W25_4060_SOLUTIONS };
   }
+  if (clean.includes('ws24') || clean.includes('wi24') || clean.includes('w24') || clean.includes('winter_2024')) {
+    return { ...OFFICIAL_IHK_W25_4060_SOLUTIONS };
+  }
+  if (clean.includes('ws23') || clean.includes('wi23') || clean.includes('w23') || clean.includes('winter_2023')) {
+    return { ...OFFICIAL_IHK_W25_4060_SOLUTIONS };
+  }
+  if (clean.includes('so24') || clean.includes('sommer_2024') || clean.includes('s24')) {
+    return { ...OFFICIAL_IHK_S25_4060_SOLUTIONS };
+  }
+  if (clean.includes('so23') || clean.includes('sommer_2023') || clean.includes('s23')) {
+    return { ...OFFICIAL_IHK_S25_4060_SOLUTIONS };
+  }
   return null;
 }

@@ -86,7 +86,14 @@ async function runTest() {
       throw new Error(`Student registration failed or not displayed in Navbar for ${fullName}`);
     }
 
-    // If activeView was 'result' for some reason, click "Bogen weiter bearbeiten"
+    // If student is on Dashboard, click "Prüfung starten" or "Bogen weiter bearbeiten"
+    const startExamBtn = await page.$('button ::-p-text(Prüfung starten)');
+    if (startExamBtn) {
+      console.log('   Clicking "Prüfung starten" from Student Dashboard...');
+      await startExamBtn.click();
+      await sleep(800);
+    }
+
     const retakeBtn = await page.$('button ::-p-text(Bogen weiter bearbeiten)');
     if (retakeBtn) {
       console.log('   Clicking "Bogen weiter bearbeiten" to open answer sheet...');
@@ -303,6 +310,20 @@ async function runTest() {
     await loginCodeBtn.click();
     await sleep(1500);
 
+    // If student lands on Dashboard, open Result View via card or navbar
+    const viewResultCardBtn = await page.$('button ::-p-text(Ergebnis ansehen)');
+    if (viewResultCardBtn) {
+      console.log('   Clicking "Ergebnis ansehen" from Student Dashboard...');
+      await viewResultCardBtn.click();
+      await sleep(1000);
+    } else {
+      const navResultBtn = await page.$('button ::-p-text(Ergebnis)');
+      if (navResultBtn) {
+        await navResultBtn.click();
+        await sleep(1000);
+      }
+    }
+
     // Verify student is on result view and feedback section is visible!
     const feedbackSection = await page.$('#teacher-feedback-section');
     if (!feedbackSection) {
@@ -316,7 +337,15 @@ async function runTest() {
     const navFeedbackBtn = await page.$('button ::-p-text(Feedback)');
     if (navFeedbackBtn) {
       await navFeedbackBtn.click();
-      console.log('✅ Navbar Feedback shortcut clicked and smooth scrolled.');
+      console.log('✅ Navbar Feedback shortcut clicked and overview opened.');
+      await sleep(600);
+
+      // Close modal if opened
+      const closeFeedbackModalBtn = await page.$('.fixed.inset-0 button');
+      if (closeFeedbackModalBtn) {
+        await closeFeedbackModalBtn.click();
+        await sleep(500);
+      }
     }
     await sleep(800);
 
@@ -325,9 +354,15 @@ async function runTest() {
     // ==========================================
     console.log('\n--- 10. Switch to another Exam Sheet ---');
     // Click "Bogen weiter bearbeiten" or Navbar "Bogen"
-    const navBogenBtn = await page.waitForSelector('button ::-p-text(Bogen)', { timeout: 5000 });
-    await navBogenBtn.click();
-    await sleep(800);
+    const retakeExamBtn = await page.$('button ::-p-text(Bogen weiter bearbeiten)');
+    if (retakeExamBtn) {
+      await retakeExamBtn.click();
+      await sleep(800);
+    } else {
+      const navBogenBtn = await page.waitForSelector('button ::-p-text(Bogen)', { timeout: 5000 });
+      await navBogenBtn.click();
+      await sleep(800);
+    }
 
     // Select second exam from dropdown
     const selectExamEl = await page.waitForSelector('select', { timeout: 5000 });

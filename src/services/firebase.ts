@@ -11,6 +11,7 @@ import {
   query,
   where,
   orderBy,
+  onSnapshot,
   Firestore,
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, FirebaseStorage } from 'firebase/storage';
@@ -173,14 +174,66 @@ export async function getExams(): Promise<ExamDefinition[]> {
   }
 }
 
-export async function saveExam(exam: ExamDefinition): Promise<void> {
-  saveExamToLocal(exam);
+// Zentraler Event-Emitter für reaktive Prüfungsaktualisierungen
+const examSubscribers = new Set<(exams: ExamDefinition[]) => void>();
+
+function notifyExamSubscribers(exams: ExamDefinition[]): void {
+  examSubscribers.forEach((cb) => {
+    try {
+      cb(exams);
+    } catch (e) {
+      console.warn('[Firebase] Fehler beim Benachrichtigen der Exam-Subscriber:', e);
+    }
+  });
+}
+
+export function subscribeToExams(callback: (exams: ExamDefinition[]) => void): () => void {
+  examSubscribers.add(callback);
+  // Sofortige Bereitstellung des aktuellen Cache-Stands
+  const currentLocal = getLocalExams();
+  callback(currentLocal.length > 0 ? currentLocal : [SAMPLE_IHK_EXAM]);
+
+  let unsubscribeFirestore = () => {};
 
   if (db) {
     try {
-      const docRef = doc(db, EXAMS_COLLECTION, exam.id);
-      await setDoc(docRef, exam, { merge: true });
-      console.log(`[Firebase] Prüfung ${exam.id} in Firestore gespeichert.`);
+      const colRef = collection(db, EXAMS_COLLECTION);
+      unsubscribeFirestore = onSnapshot(
+        colRef,
+        (snapshot) => {
+          const cloudExams: ExamDefinition[] = [];
+          snapshot.forEach((docSnap) => {
+            cloudExams.push(docSnap.data() as ExamDefinition);
+          });
+          if (cloudExams.length > 0) {
+            localStorage.setItem(LOCAL_EXAMS_CACHE_KEY, JSON.stringify(cloudExams));
+            notifyExamSubscribers(cloudExams);
+          }
+        },
+        (err) => {
+          console.warn('[Firebase] Snapshot error bei Prüfungen:', err);
+        }
+      );
+    } catch (err) {
+      console.warn('[Firebase] Konnte onSnapshot für Prüfungen nicht starten:', err);
+    }
+  }
+
+  return () => {
+    examSubscribers.delete(callback);
+    unsubscribeFirestore();
+  };
+}
+
+export async function saveExam(exam: ExamDefinition): Promise<void> {
+  const cleanExam = deepSanitize(exam);
+  saveExamToLocal(cleanExam);
+
+  if (db) {
+    try {
+      const docRef = doc(db, EXAMS_COLLECTION, cleanExam.id);
+      await setDoc(docRef, cleanExam, { merge: true });
+      console.log(`[Firebase] Prüfung ${cleanExam.id} in Firestore gespeichert.`);
     } catch (err) {
       console.warn('[Firebase] Konnte Prüfung nicht in Firestore speichern:', err);
     }
@@ -191,6 +244,7 @@ export async function deactivateAllExams(): Promise<ExamDefinition[]> {
   const local = getLocalExams();
   const updatedList = local.map((e) => ({ ...e, isActive: false }));
   localStorage.setItem(LOCAL_EXAMS_CACHE_KEY, JSON.stringify(updatedList));
+  notifyExamSubscribers(updatedList);
 
   if (db) {
     try {
@@ -213,6 +267,7 @@ export async function deactivateAllExams(): Promise<ExamDefinition[]> {
 export async function deleteExam(examId: string): Promise<void> {
   const local = getLocalExams().filter((e) => e.id !== examId);
   localStorage.setItem(LOCAL_EXAMS_CACHE_KEY, JSON.stringify(local));
+  notifyExamSubscribers(local);
 
   if (db) {
     try {
@@ -237,7 +292,9 @@ function saveExamToLocal(exam: ExamDefinition): void {
   try {
     const list = getLocalExams();
     const filtered = list.filter((e) => e.id !== exam.id);
-    localStorage.setItem(LOCAL_EXAMS_CACHE_KEY, JSON.stringify([exam, ...filtered]));
+    const updated = [exam, ...filtered];
+    localStorage.setItem(LOCAL_EXAMS_CACHE_KEY, JSON.stringify(updated));
+    notifyExamSubscribers(updated);
   } catch {}
 }
 
@@ -317,7 +374,8 @@ export async function loginWithStudentCode(rawCode: string): Promise<StudentProf
 
   if (db) {
     try {
-      await setDoc(doc(db, STUDENTS_COLLECTION, student.id), student, { merge: true });
+      const cleanStudent = deepSanitize(student);
+      await setDoc(doc(db, STUDENTS_COLLECTION, cleanStudent.id), cleanStudent, { merge: true });
     } catch {}
   }
 
@@ -373,7 +431,8 @@ export async function loginOrCreateStudent(
         const cloudData = snap.data() as StudentProfile;
         student = { ...cloudData, lastLoginAt: now };
       }
-      await setDoc(docRef, student, { merge: true });
+      const cleanStudent = deepSanitize(student);
+      await setDoc(docRef, cleanStudent, { merge: true });
     } catch (err) {
       console.warn('[Firebase] Konnte Schüler nicht in Firestore aktualisieren:', err);
     }
@@ -560,9 +619,10 @@ export async function flushOfflineSyncQueue(): Promise<number> {
   let syncedCount = 0;
   for (const sub of queue) {
     try {
-      const docRef = doc(db, SUBMISSIONS_COLLECTION, sub.id);
-      await setDoc(docRef, sub, { merge: true });
-      removeFromOfflineSyncQueue(sub.id);
+      const cleanSub = deepSanitize(sub);
+      const docRef = doc(db, SUBMISSIONS_COLLECTION, cleanSub.id);
+      await setDoc(docRef, cleanSub, { merge: true });
+      removeFromOfflineSyncQueue(cleanSub.id);
       syncedCount++;
     } catch (err) {
       console.warn(`[Offline-Queue] Sync fehlgeschlagen für ${sub.id}:`, err);

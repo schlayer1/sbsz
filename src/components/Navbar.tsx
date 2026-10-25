@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, ShieldCheck, LogOut, FileText, CheckCircle2, Sparkles, WifiOff, BookOpen } from 'lucide-react';
+import { User, ShieldCheck, LogOut, FileText, CheckCircle2, Sparkles, WifiOff, BookOpen, LayoutGrid } from 'lucide-react';
 import { StudentProfile } from '../types/exam';
 
 interface NavbarProps {
@@ -9,8 +9,8 @@ interface NavbarProps {
   onOpenTeacherLogin: () => void;
   onLogoutStudent: () => void;
   onExitTeacherMode: () => void;
-  activeView: 'exam' | 'result' | 'teacher';
-  setActiveView: (view: 'exam' | 'result' | 'teacher') => void;
+  activeView: 'dashboard' | 'exam' | 'result' | 'teacher';
+  setActiveView: (view: 'dashboard' | 'exam' | 'result' | 'teacher') => void;
   hasSubmission: boolean;
   hasFeedback?: boolean;
   totalFeedbackCount?: number;
@@ -72,8 +72,21 @@ export const Navbar: React.FC<NavbarProps> = ({
         {!isTeacherMode && currentStudent && (
           <div className="flex items-center gap-1 bg-sbsz-darkBlue/60 p-1 rounded-xl border border-white/10 shrink-0">
             <button
+              onClick={() => setActiveView('dashboard')}
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                activeView === 'dashboard'
+                  ? 'bg-white text-sbsz-darkBlue shadow font-bold'
+                  : 'text-blue-100 hover:text-white hover:bg-white/10'
+              }`}
+              title="Zurück zur Prüfungsübersicht (Kacheln)"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="hidden xs:inline sm:inline">Übersicht</span>
+            </button>
+
+            <button
               onClick={() => setActiveView('exam')}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                 activeView === 'exam'
                   ? 'bg-white text-sbsz-darkBlue shadow font-bold'
                   : 'text-blue-100 hover:text-white hover:bg-white/10'

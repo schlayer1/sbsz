@@ -12,6 +12,7 @@ import {
   Printer,
   Compass,
   GraduationCap,
+  LayoutGrid,
 } from 'lucide-react';
 import { ExamDefinition, ExamSubmission } from '../types/exam';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -28,6 +29,7 @@ interface StudentResultViewProps {
   onSelectSubmissionExam?: (examId: string) => void;
   onOpenFeedbackOverview?: () => void;
   onStartDrillMode?: (wrongQuestions: number[]) => void;
+  onBackToDashboard?: () => void;
 }
 
 export const StudentResultView: React.FC<StudentResultViewProps> = ({
@@ -40,6 +42,7 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
   onSelectSubmissionExam,
   onOpenFeedbackOverview,
   onStartDrillMode,
+  onBackToDashboard,
 }) => {
   // Falls die Einreichung noch kein vollständiges score-Objekt hat, dynamisch und stabil berechnen
   const score = useMemo(() => {
@@ -126,9 +129,19 @@ export const StudentResultView: React.FC<StudentResultViewProps> = ({
 
         {/* Print / Actions */}
         <div className="flex items-center gap-2 print:hidden">
+          {onBackToDashboard && (
+            <button
+              onClick={onBackToDashboard}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 transition-colors shadow-2xs cursor-pointer"
+              title="Zurück zur Kachel-Prüfungsübersicht"
+            >
+              <LayoutGrid className="w-4 h-4 text-sbsz-blue" />
+              <span>Zurück zur Übersicht</span>
+            </button>
+          )}
           <button
             onClick={handlePrint}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
           >
             <Printer className="w-4 h-4" />
             <span>Ergebnis drucken</span>

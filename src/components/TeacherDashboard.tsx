@@ -87,11 +87,13 @@ import {
 interface TeacherDashboardProps {
   onSelectExamForPreview: (exam: ExamDefinition) => void;
   onClose: () => void;
+  onExamsChange?: (exams: ExamDefinition[]) => void;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   onSelectExamForPreview,
   onClose,
+  onExamsChange,
 }) => {
   const [activeTab, setActiveTab] = useState<'exams' | 'students' | 'analytics' | 'gemini' | 'cloud'>(
     'students'
@@ -538,14 +540,19 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       (bundle.solutionPdfFile ? getKnownSolutionsForFile(bundle.solutionPdfFile.name) : null) ||
       { ...OFFICIAL_IHK_S25_4060_SOLUTIONS };
 
-    // Standardfragenkatalog verwenden
-    const questionsCatalog = DEFAULT_QUESTIONS_CATALOG.map((q) => ({
-      number: q.number,
-      isNonDeselectable: q.isNonDeselectable,
-      pageNumber: q.pageNumber,
-      drawingPage: q.drawingPage,
-      topic: q.topic,
-    }));
+    // Standardfragenkatalog verwenden (ohne unbereinigte undefined-Attribute)
+    const questionsCatalog = DEFAULT_QUESTIONS_CATALOG.map((q) => {
+      const item: any = {
+        number: q.number,
+        isNonDeselectable: q.isNonDeselectable,
+        pageNumber: q.pageNumber,
+        topic: q.topic,
+      };
+      if (q.drawingPage !== undefined && q.drawingPage !== null) {
+        item.drawingPage = q.drawingPage;
+      }
+      return item;
+    });
 
     const newExam: ExamDefinition = {
       id: bundle.id,
@@ -553,15 +560,15 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       subtitle: `Google Drive Synchronisation (${bundle.taskPdfFile.name})`,
       examCode: bundle.examCode,
       profession: 'Zerspanungsmechaniker/-in',
-      subject: 'IHK Abschlussprüfung Teil 2',
-      season: 'Aktuell',
+      subject: bundle.subject || 'IHK Abschlussprüfung Teil 2',
+      season: bundle.season || 'Aktuell',
       totalQuestions: 28,
       requiredQuestions: 25,
       maxDeselections: 3,
       nonDeselectableQuestions: [6, 7, 8, 9, 12, 16, 20, 28],
       pageCount: 12,
       pdfUrl: bundle.previewUrl,
-      solutionPdfUrl: bundle.solutionPreviewUrl,
+      solutionPdfUrl: bundle.solutionPreviewUrl || '',
       assignedClasses: ['Alle'],
       assignedStudents: [],
       isActive: true, // Direkt freigeschaltet mit validem Lösungsschlüssel
@@ -572,7 +579,11 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     };
 
     await saveExam(newExam);
-    setExams((prev) => [newExam, ...prev]);
+    setExams((prev) => {
+      const updated = [newExam, ...prev];
+      onExamsChange?.(updated);
+      return updated;
+    });
     alert(
       `Prüfungsbogen "${bundle.title}" wurde erfolgreich angelegt!\nLösungsschlüssel (${Object.keys(detectedSolutions).length} Aufgaben) wurde automatisch hinterlegt.`
     );

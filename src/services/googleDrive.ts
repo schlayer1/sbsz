@@ -105,6 +105,75 @@ export async function fetchDriveFolderFiles(
 }
 
 /**
+ * Analysiert den Dateinamen einer IHK-Prüfungsdatei und erzeugt
+ * einen didaktisch sauberen Titel, das IHK-Kürzel und die Semesterbezeichnung.
+ * 
+ * Erkennt z. B.:
+ * - ZM_WS23_FT_Teil_A.pdf -> Winter 2022/23: Fertigungstechnik Teil A (ZM 4060) [W23 4060]
+ * - ZM_WS24_FT_Teil_A.pdf -> Winter 2023/24: Fertigungstechnik Teil A (ZM 4060) [W24 4060]
+ * - ZM_WS25_FT_Teil_A.pdf -> Winter 2024/25: Fertigungstechnik Teil A (ZM 4060) [W25 4060]
+ * - ZM_So24_FT_Teil_A.pdf -> Sommer 2024: Fertigungstechnik Teil A (ZM 4060) [S24 4060]
+ * - ZM_So25_FT_Teil_A.pdf -> Sommer 2025: Fertigungstechnik Teil A (ZM 4060) [S25 4060]
+ */
+export function parseExamFileName(fileName: string): {
+  title: string;
+  examCode: string;
+  season: string;
+  subject: string;
+} {
+  const cleanName = fileName.replace(/\.pdf$/i, '').trim();
+
+  // 1. Semester & Jahrgang ermitteln (z. B. WS23, Wi24, W25, So24, S25)
+  const seasonMatch = cleanName.match(/(WS|Wi|Winter|So|Sommer|S)(\d{2})/i);
+  let seasonStr = 'Aktuell';
+  let examCode = '';
+
+  if (seasonMatch) {
+    const rawPrefix = seasonMatch[1].toLowerCase();
+    const yearNum = parseInt(seasonMatch[2], 10);
+    const isWinter = rawPrefix.startsWith('w');
+
+    if (isWinter) {
+      const startYear = 2000 + (yearNum - 1);
+      const endYear = yearNum;
+      seasonStr = `Winter ${startYear}/${endYear}`;
+      examCode = `W${yearNum} 4060`;
+    } else {
+      seasonStr = `Sommer 20${yearNum}`;
+      examCode = `S${yearNum} 4060`;
+    }
+  }
+
+  // 2. Fach & Modul ermitteln
+  let subject = 'Fertigungstechnik Teil A';
+  if (/teil[ _-]?b/i.test(cleanName) || /_ft_b/i.test(cleanName)) {
+    subject = 'Fertigungstechnik Teil B';
+  } else if (/wiso/i.test(cleanName)) {
+    subject = 'Wirtschafts- und Sozialkunde';
+  }
+
+  const profession = 'ZM 4060';
+  let title = '';
+  if (seasonStr !== 'Aktuell') {
+    title = `${seasonStr}: ${subject} (${profession})`;
+  } else {
+    // Generischer Fallback bei abweichenden Dateinamen
+    title = cleanName.replace(/[_]+/g, ' ');
+  }
+
+  if (!examCode) {
+    examCode = cleanName.substring(0, 15).replace(/[_]+/g, ' ');
+  }
+
+  return {
+    title,
+    examCode,
+    season: seasonStr,
+    subject,
+  };
+}
+
+/**
  * Gruppiert gefundene PDF-Dateien automatisch in Prüfungs- und Lösungshefte.
  * Erkennt Namensmuster wie "..._Aufgaben.pdf" und "..._Loesung.pdf"
  */
@@ -147,24 +216,15 @@ export function pairExamFiles(files: GoogleDriveFile[]): DiscoveredExamBundle[] 
       return solClean === baseName || solClean.includes(baseName) || baseName.includes(solClean);
     });
 
-    // Sauberen, sprechenden Titel generieren
-    let displayTitle = taskFile.name.replace(/\.pdf$/i, '').replace(/[_]+/g, ' ');
-    if (taskFile.name.includes('So25')) {
-      displayTitle = 'Sommer 2025: Fertigungstechnik Teil A (ZM 4060)';
-    } else if (taskFile.name.includes('WS25') || taskFile.name.includes('Wi25')) {
-      displayTitle = 'Winter 2024/25: Fertigungstechnik Teil A (ZM 4060)';
-    }
-
-    const examCode = taskFile.name.includes('So25')
-      ? 'S25 4060'
-      : taskFile.name.includes('WS25')
-      ? 'W25 4060'
-      : taskFile.name.replace(/\.pdf$/i, '').substring(0, 15);
+    // Sauberen, sprechenden Titel & Metadaten generieren
+    const parsed = parseExamFileName(taskFile.name);
 
     bundles.push({
       id: `drive-${taskFile.id}`,
-      title: displayTitle,
-      examCode: examCode,
+      title: parsed.title,
+      examCode: parsed.examCode,
+      season: parsed.season,
+      subject: parsed.subject,
       taskPdfFile: taskFile,
       solutionPdfFile: matchingSolution,
       previewUrl: `https://drive.google.com/file/d/${taskFile.id}/preview`,
