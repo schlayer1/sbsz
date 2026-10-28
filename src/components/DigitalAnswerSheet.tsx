@@ -369,11 +369,17 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
         <div className="bg-sbsz-lightBlue border-b border-sbsz-borderBlue px-3 py-1.5 text-xs text-sbsz-darkBlue flex items-start gap-2 shrink-0">
           <Info className="w-3.5 h-3.5 text-sbsz-blue shrink-0 mt-0.5" />
           <p className="leading-snug text-[11px]">
-            <strong>IHK-Vorgabe:</strong> 25 von 28 Aufgaben werden gewertet. 3 Aufgaben können Sie über{' '}
-            <span className="font-mono font-bold bg-amber-200 text-amber-950 px-1 py-0.2 rounded text-[11px]">
-              [A]
-            </span>{' '}
-            abwählen. Beantwortete Fragen klappen automatisch ein.
+            <strong>IHK-Vorgabe:</strong> {requiredQuestions} von {totalQuestions} Aufgaben werden gewertet.{' '}
+            {hasDeselections && (
+              <>
+                {maxDeselections} Aufgaben können Sie über{' '}
+                <span className="font-mono font-bold bg-amber-200 text-amber-950 px-1 py-0.2 rounded text-[11px]">
+                  [A]
+                </span>{' '}
+                abwählen.{' '}
+              </>
+            )}
+            Beantwortete Fragen klappen automatisch ein.
           </p>
         </div>
       )}

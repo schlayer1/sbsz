@@ -5,6 +5,8 @@
  * Google Apps Script Web-App, ohne von der Google Drive API blockiert zu werden.
  */
 
+import { getExamProfileForFile } from '../data/knownExams';
+
 export interface GoogleDriveFile {
   id: string;
   name: string;
@@ -121,9 +123,21 @@ export function parseExamFileName(fileName: string): {
   season: string;
   subject: string;
 } {
+  // 1. Zuerst prüfen, ob ein offizielles IHK-Prüfungsprofil existiert
+  const profile = getExamProfileForFile(fileName);
+  if (profile) {
+    return {
+      title: profile.title,
+      examCode: profile.examCode,
+      season: profile.season,
+      subject: profile.subject,
+    };
+  }
+
   const cleanName = fileName.replace(/\.pdf$/i, '').trim();
 
-  // 1. Semester & Jahrgang ermitteln (z. B. WS23, Wi24, W25, So24, S25)
+  // 2. Semester & Jahrgang ermitteln (z. B. WS23, Wi24, W25, So24, S25)
+  // IHK-Nomenklatur: W23 = Winter 2023/24, W24 = Winter 2024/25, S25 = Sommer 2025
   const seasonMatch = cleanName.match(/(WS|Wi|Winter|So|Sommer|S)(\d{2})/i);
   let seasonStr = 'Aktuell';
   let examCode = '';
@@ -134,8 +148,8 @@ export function parseExamFileName(fileName: string): {
     const isWinter = rawPrefix.startsWith('w');
 
     if (isWinter) {
-      const startYear = 2000 + (yearNum - 1);
-      const endYear = yearNum;
+      const startYear = 2000 + yearNum;
+      const endYear = yearNum + 1;
       seasonStr = `Winter ${startYear}/${endYear}`;
       examCode = `W${yearNum} 4060`;
     } else {
@@ -144,9 +158,11 @@ export function parseExamFileName(fileName: string): {
     }
   }
 
-  // 2. Fach & Modul ermitteln
+  // 3. Fach & Modul ermitteln
   let subject = 'Fertigungstechnik Teil A';
-  if (/teil[ _-]?b/i.test(cleanName) || /_ft_b/i.test(cleanName)) {
+  if (/auftrag|funktionsanalyse|afa|ufa/i.test(cleanName)) {
+    subject = 'Auftrags- und Funktionsanalyse Teil A';
+  } else if (/teil[ _-]?b/i.test(cleanName) || /_ft_b/i.test(cleanName)) {
     subject = 'Fertigungstechnik Teil B';
   } else if (/wiso/i.test(cleanName)) {
     subject = 'Wirtschafts- und Sozialkunde';

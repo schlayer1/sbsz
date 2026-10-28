@@ -80,6 +80,8 @@ import {
 } from '../services/googleDrive';
 import {
   getKnownSolutionsForFile,
+  getExamProfileForFile,
+  generateDefaultQuestions,
   DEFAULT_QUESTIONS_CATALOG,
   OFFICIAL_IHK_S25_4060_SOLUTIONS,
 } from '../data/knownExams';
@@ -149,6 +151,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
   const [driveSyncSuccess, setDriveSyncSuccess] = useState<string | null>(null);
   const [discoveredBundles, setDiscoveredBundles] = useState<DiscoveredExamBundle[]>([]);
+
+  // Google Drive Import Review Modal States
+  const [pendingImportBundle, setPendingImportBundle] = useState<DiscoveredExamBundle | null>(null);
+  const [importTitle, setImportTitle] = useState('');
+  const [importExamCode, setImportExamCode] = useState('');
+  const [importSubject, setImportSubject] = useState('');
+  const [importSeason, setImportSeason] = useState('');
+  const [importTotalQuestions, setImportTotalQuestions] = useState<number>(28);
+  const [importRequiredQuestions, setImportRequiredQuestions] = useState<number>(25);
+  const [importMaxDeselections, setImportMaxDeselections] = useState<number>(3);
+  const [importNonDeselectableStr, setImportNonDeselectableStr] = useState<string>('6, 7, 8, 9, 12, 16, 20, 28');
+  const [importSolutions, setImportSolutions] = useState<Record<number, number>>({});
 
   // Exam Edit / Rename States
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
@@ -526,67 +540,183 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     }
   };
 
-  const handleImportDiscoveredExam = async (bundle: DiscoveredExamBundle) => {
+  const handleOpenImportModal = (bundle: DiscoveredExamBundle) => {
+    const profile =
+      getExamProfileForFile(bundle.taskPdfFile.name) ||
+      getExamProfileForFile(bundle.title);
+
+    const totalQuestions = profile?.totalQuestions || 28;
+    const requiredQuestions = profile?.requiredQuestions || 25;
+    const maxDeselections = profile?.maxDeselections || 3;
+    const nonDeselectableList = profile?.nonDeselectableQuestions || [6, 7, 8, 9, 12, 16, 20, 28];
+    const detectedSolutions =
+      profile?.solutions ||
+      (bundle.solutionPdfFile ? getKnownSolutionsForFile(bundle.solutionPdfFile.name) : null) ||
+      { ...OFFICIAL_IHK_S25_4060_SOLUTIONS };
+
+    setImportTitle(profile?.title || bundle.title);
+    setImportExamCode(profile?.examCode || bundle.examCode);
+    setImportSubject(profile?.subject || bundle.subject || 'Fertigungstechnik Teil A');
+    setImportSeason(profile?.season || bundle.season || 'Aktuell');
+    setImportTotalQuestions(totalQuestions);
+    setImportRequiredQuestions(requiredQuestions);
+    setImportMaxDeselections(maxDeselections);
+    setImportNonDeselectableStr(nonDeselectableList.join(', '));
+    setImportSolutions(detectedSolutions);
+
+    setPendingImportBundle(bundle);
+  };
+
+  const handleConfirmImportExam = async () => {
+    if (!pendingImportBundle) return;
+
+    const nonDeselectableList = importNonDeselectableStr
+      .split(',')
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n) && n >= 1 && n <= importTotalQuestions);
+
+    const profile =
+      getExamProfileForFile(pendingImportBundle.taskPdfFile.name) ||
+      getExamProfileForFile(importTitle);
+
+    let questionsCatalog: any[] = [];
+    if (profile && profile.questions && profile.questions.length === importTotalQuestions) {
+      questionsCatalog = profile.questions.map((q) => {
+        const item: any = {
+          number: q.number,
+          isNonDeselectable: nonDeselectableList.includes(q.number),
+          pageNumber: q.pageNumber,
+          topic: q.topic,
+        };
+        if (q.drawingPage !== undefined && q.drawingPage !== null) {
+          item.drawingPage = q.drawingPage;
+        }
+        return item;
+      });
+    } else {
+      questionsCatalog = generateDefaultQuestions(
+        importTotalQuestions,
+        nonDeselectableList,
+        profile?.pageCount || 10
+      );
+    }
+
+    const newExam: ExamDefinition = {
+      id: pendingImportBundle.id,
+      title: importTitle.trim() || pendingImportBundle.title,
+      subtitle: `Google Drive Synchronisation (${pendingImportBundle.taskPdfFile.name})`,
+      examCode: importExamCode.trim() || pendingImportBundle.examCode,
+      profession: 'Zerspanungsmechaniker/-in',
+      subject: importSubject.trim() || 'Auftrags- und Funktionsanalyse Teil A',
+      season: importSeason.trim() || 'Aktuell',
+      totalQuestions: importTotalQuestions,
+      requiredQuestions: importRequiredQuestions,
+      maxDeselections: importMaxDeselections,
+      nonDeselectableQuestions: nonDeselectableList,
+      pageCount: profile?.pageCount || 12,
+      pdfUrl: pendingImportBundle.previewUrl,
+      solutionPdfUrl: pendingImportBundle.solutionPreviewUrl || '',
+      assignedClasses: ['Alle'],
+      assignedStudents: [],
+      isActive: true,
+      createdAt: Date.now(),
+      createdBy: 'Fachlehrer (Google Drive Sync)',
+      questions: questionsCatalog,
+      solutions: { ...importSolutions },
+    };
+
+    await saveExam(newExam);
+    setExams((prev) => {
+      const updated = [newExam, ...prev.filter((e) => e.id !== newExam.id)];
+      onExamsChange?.(updated);
+      return updated;
+    });
+
+    setPendingImportBundle(null);
+    alert(
+      `Prüfungsbogen "${newExam.title}" wurde erfolgreich angelegt!\nUmfang: ${newExam.totalQuestions} Aufgaben (${newExam.requiredQuestions} zu werten).`
+    );
+  };
+
+  const handleDirect1ClickImport = async (bundle: DiscoveredExamBundle) => {
     const existing = exams.find((e) => e.id === bundle.id);
     if (existing) {
       alert('Dieser Prüfungsbogen ist bereits im Portal hinterlegt.');
       return;
     }
 
-    // Automatisch bekannten IHK-Lösungsschlüssel für diese Datei ermitteln
+    const profile =
+      getExamProfileForFile(bundle.taskPdfFile.name) ||
+      getExamProfileForFile(bundle.title);
+
+    const totalQuestions = profile?.totalQuestions || 28;
+    const requiredQuestions = profile?.requiredQuestions || 25;
+    const maxDeselections = profile?.maxDeselections || 3;
+    const nonDeselectableList = profile?.nonDeselectableQuestions || [6, 7, 8, 9, 12, 16, 20, 28];
     const detectedSolutions =
-      getKnownSolutionsForFile(bundle.taskPdfFile.name) ||
-      getKnownSolutionsForFile(bundle.title) ||
+      profile?.solutions ||
       (bundle.solutionPdfFile ? getKnownSolutionsForFile(bundle.solutionPdfFile.name) : null) ||
       { ...OFFICIAL_IHK_S25_4060_SOLUTIONS };
 
-    // Standardfragenkatalog verwenden (ohne unbereinigte undefined-Attribute)
-    const questionsCatalog = DEFAULT_QUESTIONS_CATALOG.map((q) => {
-      const item: any = {
-        number: q.number,
-        isNonDeselectable: q.isNonDeselectable,
-        pageNumber: q.pageNumber,
-        topic: q.topic,
-      };
-      if (q.drawingPage !== undefined && q.drawingPage !== null) {
-        item.drawingPage = q.drawingPage;
-      }
-      return item;
-    });
+    let questionsCatalog: any[] = [];
+    if (profile && profile.questions && profile.questions.length === totalQuestions) {
+      questionsCatalog = profile.questions.map((q) => {
+        const item: any = {
+          number: q.number,
+          isNonDeselectable: nonDeselectableList.includes(q.number),
+          pageNumber: q.pageNumber,
+          topic: q.topic,
+        };
+        if (q.drawingPage !== undefined && q.drawingPage !== null) {
+          item.drawingPage = q.drawingPage;
+        }
+        return item;
+      });
+    } else {
+      questionsCatalog = generateDefaultQuestions(
+        totalQuestions,
+        nonDeselectableList,
+        profile?.pageCount || 10
+      );
+    }
 
     const newExam: ExamDefinition = {
       id: bundle.id,
-      title: bundle.title,
+      title: profile?.title || bundle.title,
       subtitle: `Google Drive Synchronisation (${bundle.taskPdfFile.name})`,
-      examCode: bundle.examCode,
+      examCode: profile?.examCode || bundle.examCode,
       profession: 'Zerspanungsmechaniker/-in',
-      subject: bundle.subject || 'IHK Abschlussprüfung Teil 2',
-      season: bundle.season || 'Aktuell',
-      totalQuestions: 28,
-      requiredQuestions: 25,
-      maxDeselections: 3,
-      nonDeselectableQuestions: [6, 7, 8, 9, 12, 16, 20, 28],
-      pageCount: 12,
+      subject: profile?.subject || bundle.subject || 'IHK Abschlussprüfung Teil 2',
+      season: profile?.season || bundle.season || 'Aktuell',
+      totalQuestions,
+      requiredQuestions,
+      maxDeselections,
+      nonDeselectableQuestions: nonDeselectableList,
+      pageCount: profile?.pageCount || 12,
       pdfUrl: bundle.previewUrl,
       solutionPdfUrl: bundle.solutionPreviewUrl || '',
       assignedClasses: ['Alle'],
       assignedStudents: [],
-      isActive: true, // Direkt freigeschaltet mit validem Lösungsschlüssel
+      isActive: true,
       createdAt: Date.now(),
       createdBy: 'Fachlehrer (Google Drive Sync)',
       questions: questionsCatalog,
-      solutions: detectedSolutions, // Vollständiger 28-Fragen-Musterlösungsschlüssel
+      solutions: detectedSolutions,
     };
 
     await saveExam(newExam);
     setExams((prev) => {
-      const updated = [newExam, ...prev];
+      const updated = [newExam, ...prev.filter((e) => e.id !== newExam.id)];
       onExamsChange?.(updated);
       return updated;
     });
     alert(
-      `Prüfungsbogen "${bundle.title}" wurde erfolgreich angelegt!\nLösungsschlüssel (${Object.keys(detectedSolutions).length} Aufgaben) wurde automatisch hinterlegt.`
+      `Prüfungsbogen "${newExam.title}" wurde erfolgreich angelegt!\nUmfang: ${newExam.totalQuestions} Aufgaben (${newExam.requiredQuestions} zu werten).`
     );
+  };
+
+  const handleImportDiscoveredExam = (bundle: DiscoveredExamBundle) => {
+    handleOpenImportModal(bundle);
   };
 
   const handleSaveConfig = () => {
@@ -1194,57 +1324,101 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
             )}
 
             {/* Neu gefundene Prüfungshefte im Google Drive Ordner */}
-            {discoveredBundles.length > 0 && (
-              <div className="mt-3 bg-blue-50/60 border border-blue-200 rounded-xl p-4 space-y-3">
-                <div className="text-xs font-bold text-blue-900 uppercase tracking-wide flex items-center gap-1.5">
-                  <FolderOpen className="w-4 h-4 text-blue-600" />
-                  <span>Gefundene Prüfungshefte im Google Drive ({discoveredBundles.length})</span>
-                </div>
-                <div className="space-y-2">
-                  {discoveredBundles.map((bundle) => {
-                    const alreadyImported = exams.some((e) => e.id === bundle.id);
-                    return (
-                      <div
-                        key={bundle.id}
-                        className="bg-white p-3 rounded-lg border border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+            {discoveredBundles.length > 0 && (() => {
+              const unimportedBundles = discoveredBundles.filter((b) => !exams.some((e) => e.id === b.id));
+              return (
+                <div className="mt-3 bg-blue-50/60 border border-blue-200 rounded-xl p-4 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-bold text-blue-900 uppercase tracking-wide flex items-center gap-1.5">
+                      <FolderOpen className="w-4 h-4 text-blue-600" />
+                      <span>Gefundene Prüfungshefte im Google Drive ({discoveredBundles.length})</span>
+                    </div>
+                    {unimportedBundles.length > 0 && (
+                      <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[11px] font-extrabold px-2 py-0.5 rounded-full">
+                        {unimportedBundles.length} noch nicht freigeschaltet
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Banner bei neuen Prüfungen */}
+                  {unimportedBundles.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-950 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>
+                          <strong>{unimportedBundles.length} neue Prüfung(en) erkannt:</strong> Möchten Sie Fragenanzahl, Sperraufgaben & Lösungen vor dem Import prüfen?
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenImportModal(unimportedBundles[0])}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg shrink-0 flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
                       >
-                        <div>
-                          <div className="font-bold text-slate-800">{bundle.title}</div>
-                          <div className="text-slate-500 text-[11px] mt-0.5">
-                            📄 Aufgabenheft: {bundle.taskPdfFile.name}{' '}
-                            {bundle.solutionPdfFile ? (
-                              <span className="text-emerald-700 font-bold ml-1.5">
-                                ✓ Lösungsheft erkannt ({bundle.solutionPdfFile.name})
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Erste Prüfung prüfen</span>
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    {discoveredBundles.map((bundle) => {
+                      const alreadyImported = exams.some((e) => e.id === bundle.id);
+                      return (
+                        <div
+                          key={bundle.id}
+                          className="bg-white p-3 rounded-lg border border-blue-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                        >
+                          <div>
+                            <div className="font-bold text-slate-800">{bundle.title}</div>
+                            <div className="text-slate-500 text-[11px] mt-0.5">
+                              📄 Aufgabenheft: {bundle.taskPdfFile.name}{' '}
+                              {bundle.solutionPdfFile ? (
+                                <span className="text-emerald-700 font-bold ml-1.5">
+                                  ✓ Lösungsheft erkannt ({bundle.solutionPdfFile.name})
+                                </span>
+                              ) : (
+                                <span className="text-amber-700 font-bold ml-1.5">
+                                  (Kein separates Lösungsheft erkannt)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {alreadyImported ? (
+                              <span className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg font-bold text-xs">
+                                Bereits importiert
                               </span>
                             ) : (
-                              <span className="text-amber-700 font-bold ml-1.5">
-                                (Kein separates Lösungsheft erkannt)
-                              </span>
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenImportModal(bundle)}
+                                  className="bg-sbsz-blue hover:bg-sbsz-darkBlue text-white px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                  title="Fragenanzahl, Titel und Lösungen vor dem Import überprüfen und anpassen"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Prüfen & Importieren</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDirect1ClickImport(bundle)}
+                                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                  title="Sofort mit erkannten Standard-Parametern für Schüler freischalten"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  <span>1-Klick</span>
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          {alreadyImported ? (
-                            <span className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg font-bold text-xs">
-                              Bereits importiert
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => handleImportDiscoveredExam(bundle)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-1.5 rounded-lg font-bold text-xs flex items-center gap-1.5 shadow transition-colors"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Für Schüler freischalten</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2675,6 +2849,254 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <span>Lösungsschlüssel speichern</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Google Drive Import & Review Modal */}
+      {pendingImportBundle && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-3 sm:p-4 bg-sbsz-navy/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] flex flex-col overflow-hidden border border-slate-200">
+            {/* Modal Header */}
+            <div className="bg-sbsz-darkBlue text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-sbsz-blue text-white flex items-center justify-center font-bold shadow">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg">
+                    Prüfungsbogen prüfen & freischalten
+                  </h3>
+                  <p className="text-xs text-blue-200 truncate max-w-md">
+                    {pendingImportBundle.taskPdfFile.name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingImportBundle(null)}
+                className="text-slate-300 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 text-xs">
+              {/* PDF Preview Notice */}
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-sbsz-blue shrink-0" />
+                  <span className="text-blue-900 font-medium">
+                    PDF im Google Drive: <strong>{pendingImportBundle.taskPdfFile.name}</strong>
+                  </span>
+                </div>
+                <a
+                  href={pendingImportBundle.previewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-white hover:bg-blue-100 text-sbsz-blue border border-blue-300 px-2.5 py-1 rounded-lg font-bold text-[11px] flex items-center gap-1 shrink-0 transition-colors"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  <span>PDF ansehen</span>
+                </a>
+              </div>
+
+              {/* Form Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Prüfungstitel (für Schüler sichtbar)
+                  </label>
+                  <input
+                    type="text"
+                    value={importTitle}
+                    onChange={(e) => setImportTitle(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium text-slate-800 text-xs focus:ring-2 focus:ring-sbsz-blue focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    IHK-Kürzel / Prüfungs-Code
+                  </label>
+                  <input
+                    type="text"
+                    value={importExamCode}
+                    onChange={(e) => setImportExamCode(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium text-slate-800 text-xs focus:ring-2 focus:ring-sbsz-blue focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Prüfungszeitraum / Semester
+                  </label>
+                  <input
+                    type="text"
+                    value={importSeason}
+                    onChange={(e) => setImportSeason(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium text-slate-800 text-xs focus:ring-2 focus:ring-sbsz-blue focus:outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Fach / Prüfungsbereich
+                  </label>
+                  <input
+                    type="text"
+                    value={importSubject}
+                    onChange={(e) => setImportSubject(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium text-slate-800 text-xs focus:ring-2 focus:ring-sbsz-blue focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Questions Count & Gating Settings */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="font-extrabold text-slate-800 flex items-center justify-between">
+                  <span>Fragenanzahl & IHK-Bewertungsregeln</span>
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportTotalQuestions(14);
+                        setImportRequiredQuestions(11);
+                        setImportMaxDeselections(3);
+                        setImportNonDeselectableStr('2, 5, 6, 12');
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                        importTotalQuestions === 14
+                          ? 'bg-sbsz-blue text-white border-sbsz-blue'
+                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      14 Aufgaben (z. B. W23)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImportTotalQuestions(28);
+                        setImportRequiredQuestions(25);
+                        setImportMaxDeselections(3);
+                        setImportNonDeselectableStr('4, 6, 7, 8, 9, 12, 18, 22');
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                        importTotalQuestions === 28
+                          ? 'bg-sbsz-blue text-white border-sbsz-blue'
+                          : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                      }`}
+                    >
+                      28 Aufgaben (Standard)
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-slate-600 font-bold mb-1">
+                      Gesamtanzahl
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={importTotalQuestions}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10) || 1;
+                        setImportTotalQuestions(val);
+                        if (importRequiredQuestions > val) setImportRequiredQuestions(val);
+                      }}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-800 text-xs text-center"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-600 font-bold mb-1">
+                      Zu werten
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={importTotalQuestions}
+                      value={importRequiredQuestions}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10) || 1;
+                        setImportRequiredQuestions(val);
+                        setImportMaxDeselections(Math.max(0, importTotalQuestions - val));
+                      }}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-800 text-xs text-center"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-600 font-bold mb-1">
+                      Abwahlen
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={importTotalQuestions}
+                      value={importMaxDeselections}
+                      onChange={(e) => setImportMaxDeselections(parseInt(e.target.value, 10) || 0)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-bold text-slate-800 text-xs text-center"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-600 font-bold mb-1">
+                    Nicht abwählbare Aufgaben (Sperraufgaben)
+                  </label>
+                  <input
+                    type="text"
+                    value={importNonDeselectableStr}
+                    onChange={(e) => setImportNonDeselectableStr(e.target.value)}
+                    placeholder="z. B. 2, 5, 6, 12"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono text-slate-800 text-xs"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Kommagetrennte Liste. Diese Aufgaben können vom Prüfling im Antwortbogen nicht gestrichen werden.
+                  </p>
+                </div>
+              </div>
+
+              {/* Solution Key Info Badge */}
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-center justify-between text-emerald-900">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="font-bold">Musterlösungsschlüssel:</span>{' '}
+                    <span>{Object.keys(importSolutions).length} von {importTotalQuestions} Aufgaben hinterlegt</span>
+                  </div>
+                </div>
+                {pendingImportBundle.solutionPdfFile && (
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded">
+                    Lösungsheft verknüpft
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => setPendingImportBundle(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmImportExam}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition-colors shadow flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-4 h-4" />
+                <span>Für Schüler freischalten & importieren</span>
+              </button>
             </div>
           </div>
         </div>
