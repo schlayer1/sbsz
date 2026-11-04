@@ -23,26 +23,26 @@ export interface KnownExamProfile {
  * Nicht abwählbar: [2, 5, 6, 12]
  */
 export const OFFICIAL_IHK_W23_4060_SOLUTIONS: Record<number, number> = {
-  1: 4,
-  2: 2,
-  3: 3,
+  1: 3,
+  2: 4,
+  3: 5,
   4: 1,
   5: 1,
-  6: 1,
-  7: 3,
-  8: 1,
+  6: 2,
+  7: 4,
+  8: 2,
   9: 1,
-  10: 3,
+  10: 4,
   11: 5,
   12: 2,
   13: 5,
-  14: 4,
+  14: 2,
 };
 
 /**
  * Offizieller IHK-Musterlösungsschlüssel:
  * Abschlussprüfung Teil 2 Winter 2024/25
- * Auftrags- und Funktionsanalyse Teil A (W24 4060 K1)
+ * Auftrags- und Funktionsanalyse Teil A (W24 4060 K1 / L1)
  * Gesamt: 28 gebundene Aufgaben, 25 zu werten, 3 abzuwählen
  * Nicht abwählbar: [4, 6, 7, 8, 9, 12, 18, 22]
  */
@@ -50,37 +50,37 @@ export const OFFICIAL_IHK_W24_4060_SOLUTIONS: Record<number, number> = {
   1: 2,
   2: 2,
   3: 2,
-  4: 2,
-  5: 2,
+  4: 3,
+  5: 3,
   6: 2,
   7: 4,
   8: 2,
-  9: 2,
+  9: 3,
   10: 2,
-  11: 2,
-  12: 2,
-  13: 2,
-  14: 2,
-  15: 2,
-  16: 2,
-  17: 2,
-  18: 2,
-  19: 2,
+  11: 3,
+  12: 4,
+  13: 4,
+  14: 5,
+  15: 3,
+  16: 4,
+  17: 3,
+  18: 3,
+  19: 3,
   20: 5,
-  21: 2,
-  22: 2,
-  23: 3,
+  21: 3,
+  22: 3,
+  23: 5,
   24: 4,
-  25: 2,
-  26: 2,
-  27: 2,
+  25: 3,
+  26: 3,
+  27: 3,
   28: 4,
 };
 
 /**
  * Offizieller IHK-Musterlösungsschlüssel:
  * Abschlussprüfung Teil 2 Sommer 2025
- * Fertigungstechnik Teil A (S25 4060 K4)
+ * Fertigungstechnik Teil A (S25 4060 K4 / L4)
  * Gesamt: 28 gebundene Aufgaben, 25 zu werten, 3 abzuwählen
  * Nicht abwählbar: [6, 7, 8, 9, 12, 16, 20, 28]
  */
@@ -105,14 +105,14 @@ export const OFFICIAL_IHK_S25_4060_SOLUTIONS: Record<number, number> = {
   18: 1,
   19: 2,
   20: 3,
-  21: 2,
-  22: 1,
-  23: 3,
-  24: 4,
-  25: 2,
-  26: 2,
-  27: 3,
-  28: 2,
+  21: 3,
+  22: 2,
+  23: 4,
+  24: 5,
+  25: 3,
+  26: 3,
+  27: 4,
+  28: 3,
 };
 
 // Rückwärtskompatibilität für bestehende Importe
@@ -228,7 +228,10 @@ export function getExamProfileForFile(filename: string): KnownExamProfile | null
     clean.includes('wi24') ||
     clean.includes('w24') ||
     clean.includes('winter_2024') ||
-    clean.includes('winter 2024')
+    clean.includes('winter 2024') ||
+    clean.includes('ws25') ||
+    clean.includes('w25') ||
+    clean.includes('winter 2024/25')
   ) {
     return {
       idPrefix: 'w24-4060',

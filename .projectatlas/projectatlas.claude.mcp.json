@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "projectatlas": {
+      "command": "/Users/nicolekeller/.local/bin/projectatlas",
+      "args": [
+        "--require-version",
+        "0.5.0",
+        "--db",
+        "/Users/nicolekeller/Desktop/Antigravity Projekte/SBSZ/.projectatlas/projectatlas.db",
+        "--config",
+        "/Users/nicolekeller/Desktop/Antigravity Projekte/SBSZ/.projectatlas/config.toml",
+        "mcp"
+      ]
+    }
+  }
+}

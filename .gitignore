@@ -23,3 +23,8 @@ raw_assets/
 *.zip
 *.7z
 *.tar.gz
+
+# ProjectAtlas runtime database & locks
+.projectatlas/*.db*
+.projectatlas/*.lock
+
