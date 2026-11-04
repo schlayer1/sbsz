@@ -366,6 +366,7 @@ export async function executeMultimodalCascade(
         generationConfig: {
           temperature: 0.1, // Sehr niedrige Temperatur für maximale Präzision bei Zahlen/Lösungen
           maxOutputTokens: 2048,
+          responseMimeType: 'application/json',
         },
       };
 
@@ -417,16 +418,33 @@ export async function extractSolutionKeyFromDocument(
   base64Data: string,
   mimeType: string
 ): Promise<ExtractedSolutionResult> {
-  const systemInstruction = `Du bist ein hochpräziser IHK-Prüfungsassistent für gewerblich-technische und kaufmännische Ausbildungsberufe (z. B. Industriemechaniker, Zerspanungsmechaniker, Elektroniker, Mechatroniker, Fachinformatiker).
-Deine Aufgabe ist es, aus dem übergebenen IHK-Lösungsblatt (Musterlösung, Lösungsschlüssel, Lösungstabelle, Bewertungsbogen) alle Aufgabennummern und die jeweils zugehörigen richtigen Lösungsziffern (1 bis 5) vollständig und fehlerfrei zu extrahieren.
+  const systemInstruction = `Du bist ein hochpräziser IHK-Prüfungsassistent für gewerblich-technische Ausbildungsberufe (z. B. Zerspanungsmechaniker, Industriemechaniker, Mechatroniker).
+Deine Aufgabe ist es, aus dem übergebenen IHK-/PAL-Lösungsbogen (Lösungsschablone / Musterlösung) alle Aufgabennummern, die Lösungsziffern (1 bis 5) und die nicht abwählbaren Aufgaben fehlerfrei zu extrahieren.
 
-WICHTIGE REGELN:
-1. Die Anzahl der Aufgaben ist DYNAMISCH. Es können z. B. 20, 25, 28, 30 oder mehr Aufgaben sein. Ermittle die tatsächliche Anzahl aus dem Dokument!
-2. Jede Aufgabe hat in der Regel eine Ziffer von 1 bis 5 als richtige Antwort.
-3. Falls Pflichtaufgaben (nicht abwählbare Aufgaben) markiert sind (z. B. mit * oder Fettdruck oder Vermerk "gebundene Aufgabe / Pflichtaufgabe"), erfasse deren Nummern.
-4. Gib das Ergebnis AUSSCHLIESSLICH als valides JSON-Objekt zurück, ohne Markdown-Backticks (\`\`\`json) und ohne einleitenden Text.
+VISUELLER AUFBAU DES IHK-/PAL-LÖSUNGSBOGENS (SEHR WICHTIG):
+1. TABELLEN-BLÖCKE:
+   - Die Lösungstabelle ist meist in 2 oder 3 horizontale Blöcke unterteilt.
+   - 28 Aufgaben: Block 1 (Aufgaben 1–10), Block 2 (Aufgaben 11–20), Block 3 (Aufgaben 21–28).
+   - 14 Aufgaben: Block 1 (Aufgaben 1–10), Block 2 (Aufgaben 11–14).
+   - Die Spaltenköpfe enthalten die Aufgabennummern.
 
-JSON-STRUKTUR:
+2. LÖSUNGSERKENNUNG DURCH KREISMARKIERUNGEN (KEINE GEDRUCKTEN ZAHLEN):
+   - In den Spalten unter jeder Aufgabennummer stehen KEINE geschriebenen Zahlen als Lösung!
+   - Jede Spalte hat 5 kleine Rasterpunkte übereinander für die Antwortoptionen 1 bis 5:
+     * Oberster Punkt = Antwort 1
+     * 2. Punkt von oben = Antwort 2
+     * 3. Punkt von oben = Antwort 3
+     * 4. Punkt von oben = Antwort 4
+     * Unterster (5.) Punkt = Antwort 5
+   - Die korrekte Antwort ist derjenige Punkt, um den ein KREIS oder ein OVAL gedruckt oder gezeichnet ist (bzw. ein Lochstanzungs-Kreis).
+   - Bestimme für JEDE Aufgabennummer exakt die vertikale Höhenstufe (1, 2, 3, 4 oder 5) des eingekreisten Punktes.
+
+3. HINWEISE ZU NICHT ABWÄHLBAREN AUFGABEN:
+   - Suche am unteren Rand des Bogens den Kasten "Hinweis:" oder "Folgende Aufgaben sind nicht abwählbar:".
+   - Extrahiere die Ziffern (z. B. 4, 6, 7, 8, 9, 12, 18, 22 oder 2, 5, 6, 12) als Integer-Array in "nonDeselectableQuestions".
+   - Ermittle die Gesamtzahl der gebundenen Aufgaben (z. B. 14 oder 28) in "totalQuestions".
+
+JSON-FORMAT:
 {
   "totalQuestions": 28,
   "solutions": {
@@ -435,13 +453,14 @@ JSON-STRUKTUR:
     "3": 4,
     ...
   },
-  "nonDeselectableQuestions": [6, 7, 8, 9, 12, 16, 20, 28],
-  "notes": "Sommer 2025 Zerspanungsmechaniker Teil A - 28 Aufgaben erkannt"
+  "nonDeselectableQuestions": [4, 6, 7, 8, 9, 12, 18, 22],
+  "notes": "Erkannt: 28 Aufgaben, Kreisring-Auswertung"
 }`;
 
-  const prompt = `Analysiere dieses IHK-Lösungsdokument sorgfältig. 
-Lies jede Aufgabennummer und die zugehörige Lösungsziffer (1-5) aus.
-Gib ausschließlich das geforderte JSON zurück.`;
+  const prompt = `Analysiere die IHK-Lösungsschablone im Bild präzise.
+Achte streng auf die 5 Höhenstufen der Punkte je Spalte (1=oben bis 5=unten) und finde den jeweils eingekreisten Punkt.
+Lies außerdem den Hinweiskasten zu den nicht abwählbaren Aufgaben aus.
+Gib ausschließlich das JSON-Objekt zurück.`;
 
   const rawResponse = await executeMultimodalCascade(prompt, base64Data, mimeType, systemInstruction);
 
