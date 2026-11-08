@@ -9,6 +9,9 @@ import {
   ExternalLink,
   Loader2,
   AlertCircle,
+  ChevronsLeft,
+  ChevronsRight,
+  MoveHorizontal,
 } from 'lucide-react';
 import { ExamDefinition } from '../types/exam';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -43,7 +46,118 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const iframeScrollRef = useRef<HTMLDivElement | null>(null);
+  const topScrollbarRef = useRef<HTMLDivElement | null>(null);
+  const isSyncingScrollRef = useRef<boolean>(false);
   const renderTaskRef = useRef<any>(null);
+
+  // Horizontaler Pan/Sichtbereichs-Zustand für vergrößerte Ansicht (> 100%)
+  const [scrollRatio, setScrollRatio] = useState<number>(0);
+
+  // Liefert den aktuell aktiven Scroll-Container (Iframe in Modus 3 oder containerRef in Modus 1/2)
+  const getActiveScrollContainer = (): HTMLDivElement | null => {
+    if (pdfError) return iframeScrollRef.current;
+    return containerRef.current;
+  };
+
+  const updateScrollRatio = () => {
+    if (isSyncingScrollRef.current) return;
+    const el = getActiveScrollContainer();
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    if (maxScroll <= 0) {
+      if (zoomLevel <= 100) setScrollRatio(0);
+      return;
+    }
+    const ratio = Math.max(0, Math.min(1, el.scrollLeft / maxScroll));
+    setScrollRatio(ratio);
+
+    if (topScrollbarRef.current) {
+      isSyncingScrollRef.current = true;
+      const topMax = topScrollbarRef.current.scrollWidth - topScrollbarRef.current.clientWidth;
+      if (topMax > 0) {
+        topScrollbarRef.current.scrollLeft = ratio * topMax;
+      }
+      setTimeout(() => {
+        isSyncingScrollRef.current = false;
+      }, 60);
+    }
+  };
+
+  const handleScrollToRatio = (targetRatio: number) => {
+    const el = getActiveScrollContainer();
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    const clamped = Math.max(0, Math.min(1, targetRatio));
+    setScrollRatio(clamped);
+
+    isSyncingScrollRef.current = true;
+    el.scrollLeft = clamped * maxScroll;
+    if (topScrollbarRef.current) {
+      const topMax = topScrollbarRef.current.scrollWidth - topScrollbarRef.current.clientWidth;
+      if (topMax > 0) {
+        topScrollbarRef.current.scrollLeft = clamped * topMax;
+      }
+    }
+    setTimeout(() => {
+      isSyncingScrollRef.current = false;
+    }, 60);
+  };
+
+  const handleScrollByStep = (direction: -1 | 1) => {
+    const el = getActiveScrollContainer();
+    if (!el) return;
+    const maxScroll = el.scrollWidth - el.clientWidth;
+    if (maxScroll <= 0) return;
+    const stepRatio = 0.2;
+    const nextRatio = Math.max(0, Math.min(1, scrollRatio + direction * stepRatio));
+    handleScrollToRatio(nextRatio);
+  };
+
+  const handleTopScrollbarScroll = () => {
+    if (isSyncingScrollRef.current) return;
+    const topEl = topScrollbarRef.current;
+    const el = getActiveScrollContainer();
+    if (!topEl || !el) return;
+    const topMax = topEl.scrollWidth - topEl.clientWidth;
+    const contentMax = el.scrollWidth - el.clientWidth;
+    if (topMax > 0 && contentMax > 0) {
+      const ratio = Math.max(0, Math.min(1, topEl.scrollLeft / topMax));
+      setScrollRatio(ratio);
+      isSyncingScrollRef.current = true;
+      el.scrollLeft = ratio * contentMax;
+      setTimeout(() => {
+        isSyncingScrollRef.current = false;
+      }, 60);
+    }
+  };
+
+  // Bei Seitenwechsel oder Prüfungswechsel Sichtbereich wieder auf Ausgangsposition (oben links) zurücksetzen
+  useEffect(() => {
+    const el = getActiveScrollContainer();
+    if (el) {
+      el.scrollLeft = 0;
+      el.scrollTop = 0;
+    }
+    setScrollRatio(0);
+    if (topScrollbarRef.current) {
+      topScrollbarRef.current.scrollLeft = 0;
+    }
+  }, [currentPage, exam.id]);
+
+  // Bei Zoom-Reset (<= 100%) horizontalen Versatz auf 0 zurücksetzen
+  useEffect(() => {
+    if (zoomLevel <= 100) {
+      const el = getActiveScrollContainer();
+      if (el) {
+        el.scrollLeft = 0;
+      }
+      setScrollRatio(0);
+      if (topScrollbarRef.current) {
+        topScrollbarRef.current.scrollLeft = 0;
+      }
+    }
+  }, [zoomLevel]);
 
   // Beobachte Browser- und Containergröße nur wenn PDF.js Canvas aktiv ist, mit Debounce
   useEffect(() => {
@@ -88,7 +202,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 15, 60));
   const handleZoomReset = () => setZoomLevel(100);
 
-  // Tastaturnavigation für seitenweises Blättern (← / →) und Zoom (+ / - / 0)
+  // Tastaturnavigation für seitenweises Blättern (← / →), Zoom (+ / - / 0) und Sichtbereich-Verschiebung (Shift + ← / →)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -98,6 +212,19 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       ) {
         return;
       }
+
+      // Shift + Pfeiltasten für horizontales Verschieben des Sichtbereichs am oberen Rand
+      if (e.shiftKey && (e.key === 'ArrowRight' || e.key === 'Right')) {
+        e.preventDefault();
+        handleScrollByStep(1);
+        return;
+      }
+      if (e.shiftKey && (e.key === 'ArrowLeft' || e.key === 'Left')) {
+        e.preventDefault();
+        handleScrollByStep(-1);
+        return;
+      }
+
       if (e.key === 'ArrowRight' && currentPage < effectiveTotalPages) {
         onPageChange(currentPage + 1);
       } else if (e.key === 'ArrowLeft' && currentPage > 1) {
@@ -112,7 +239,27 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentPage, effectiveTotalPages, onPageChange]);
+  }, [currentPage, effectiveTotalPages, onPageChange, scrollRatio]);
+
+  // Zurücksetzen / Nachführen des horizontalen Sichtbereichs bei Zoom- oder Seitenwechsel
+  useEffect(() => {
+    if (zoomLevel <= 100) {
+      setScrollRatio(0);
+      const el = getActiveScrollContainer();
+      if (el) el.scrollLeft = 0;
+    } else {
+      const timer = setTimeout(() => {
+        updateScrollRatio();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [zoomLevel]);
+
+  useEffect(() => {
+    const el = getActiveScrollContainer();
+    if (el) el.scrollLeft = 0;
+    setScrollRatio(0);
+  }, [currentPage]);
 
   // Prüfungs-PDF laden (falls nicht über Bild-Dateien gerendert)
   useEffect(() => {
@@ -240,7 +387,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     };
   }, [pdfDoc, currentPage, zoomLevel, containerSize, isSampleWithImages]);
 
-  // Für Google-Drive Fallback URLs falls nötig
+  // Format-URL für Google Drive
   function formatPdfEmbedUrl(url: string, page: number): string {
     if (!url) return '';
     const driveMatch = url.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
@@ -250,6 +397,96 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
     }
     return `${url}#page=${page}`;
   }
+
+  // Oberer Sichtbereichs-Controller für bequeme horizontale Steuerung am oberen Iframe-Rand
+  const renderTopPanController = () => {
+    if (zoomLevel <= 100) return null;
+
+    return (
+      <div className="sticky left-0 z-10 w-full max-w-full bg-slate-900 border border-blue-500/40 rounded-xl px-3 py-2 mb-2 flex flex-wrap items-center justify-between gap-2.5 text-xs text-slate-200 shadow-xl shrink-0 transition-all">
+        {/* Linke Steuerung: Schnell-Sprung-Buttons */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-bold text-blue-400 flex items-center gap-1 mr-1">
+            <MoveHorizontal className="w-3.5 h-3.5 text-blue-400" />
+            <span className="hidden sm:inline">Sichtbereich steuern:</span>
+            <span className="sm:hidden">Sicht:</span>
+          </span>
+
+          <button
+            onClick={() => handleScrollToRatio(0)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+              scrollRatio <= 0.05
+                ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+            title="Ganz nach links scrollen (Aufgaben & linker Seitenrand)"
+          >
+            <ChevronsLeft className="w-3.5 h-3.5" />
+            <span>Links</span>
+          </button>
+
+          <button
+            onClick={() => handleScrollByStep(-1)}
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition-colors cursor-pointer"
+            title="Schrittweise nach links verschieben (-20%)"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => handleScrollToRatio(0.5)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+              scrollRatio > 0.4 && scrollRatio < 0.6
+                ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+            title="Sichtbereich in die Mitte zentrieren"
+          >
+            <span>Mitte</span>
+          </button>
+
+          <button
+            onClick={() => handleScrollByStep(1)}
+            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 transition-colors cursor-pointer"
+            title="Schrittweise nach rechts verschieben (+20%)"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => handleScrollToRatio(1)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
+              scrollRatio >= 0.95
+                ? 'bg-blue-600 text-white border-blue-500 shadow-xs'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+            title="Ganz nach rechts scrollen (Zeichnungen & rechter Rand)"
+          >
+            <span>Rechts</span>
+            <ChevronsRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Rechter Teil: Interaktiver Schieberegler mit Live-% Anzeige */}
+        <div className="flex items-center gap-2 flex-1 max-w-[280px] min-w-[140px]">
+          <span className="text-[10px] text-slate-400 font-mono select-none">L (0%)</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(scrollRatio * 100)}
+            onChange={(e) => handleScrollToRatio(Number(e.target.value) / 100)}
+            className="w-full accent-blue-500 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+            title="Sichtbereich horizontal stufenlos verschieben"
+          />
+          <span className="text-[10px] text-slate-400 font-mono select-none">R (100%)</span>
+          <span className="text-[11px] font-mono font-bold text-blue-400 w-11 text-right select-none">
+            {Math.round(scrollRatio * 100)}%
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   const pageImagePath = `/sample-exam/pages/page_${currentPage}.png`;
 
@@ -365,7 +602,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       {/* Main Document Viewer Canvas: Immer exakt eine Seite zentriert & stabil eingepasst */}
       <div
         ref={containerRef}
-        className={`flex-1 bg-slate-950 overflow-auto p-1 sm:p-2 flex items-start relative select-none w-full ${
+        onScroll={!pdfError ? updateScrollRatio : undefined}
+        className={`flex-1 bg-slate-950 p-1 sm:p-2 flex items-start relative select-none w-full ${
+          pdfError ? 'overflow-hidden' : 'overflow-auto'
+        } ${
           zoomLevel > 100 ? 'justify-start' : 'justify-center'
         }`}
       >
@@ -377,10 +617,17 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         )}
 
         <div
-          className={`w-full h-full flex flex-col min-h-0 ${
-            zoomLevel > 100 ? 'items-start justify-start' : 'items-center justify-start'
+          className={`h-full flex flex-col min-h-0 ${
+            pdfError
+              ? 'w-full'
+              : zoomLevel > 100
+              ? 'w-auto min-w-full items-start justify-start'
+              : 'w-full items-center justify-start'
           }`}
         >
+          {/* Für Modus 1 & 2: Oberer Pan-Controller falls gezoomt */}
+          {!pdfError && renderTopPanController()}
+
           {isSampleWithImages ? (
             /* Modus 1: Vorgerenderte Buchseiten (Beispielprüfung Sommer 2025) */
             <div
@@ -442,8 +689,31 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                 )}
               </div>
 
+              {/* Neuer oberer Sichtbereichs-Controller am oberen Iframe-Rand */}
+              {renderTopPanController()}
+
+              {/* Oberer synchronisierter Scrollbalken direkt am oberen Rand des Iframes */}
+              {zoomLevel > 100 && (
+                <div
+                  ref={topScrollbarRef}
+                  onScroll={handleTopScrollbarScroll}
+                  className="w-full overflow-x-auto overflow-y-hidden h-3 bg-slate-900 border-x border-t border-slate-700 rounded-t-xl shrink-0 cursor-ew-resize"
+                  title="Oberer horizontaler Scrollbalken (am oberen Rand ziehen zum Verschieben)"
+                >
+                  <div style={{ width: `${zoomLevel}%`, height: '1px' }} />
+                </div>
+              )}
+
               {/* Iframe mit nativer Zoom- und Scrollunterstützung */}
-              <div className="flex-1 w-full min-h-0 overflow-auto rounded-xl relative">
+              <div
+                ref={iframeScrollRef}
+                onScroll={updateScrollRatio}
+                className={`flex-1 w-full min-h-0 overflow-auto relative ${
+                  zoomLevel > 100
+                    ? 'rounded-b-xl border-x border-b border-slate-700'
+                    : 'rounded-xl border border-slate-700'
+                }`}
+              >
                 <div
                   style={{
                     width: zoomLevel > 100 ? `${zoomLevel}%` : '100%',
@@ -492,7 +762,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           </span>
         </div>
         <div className="text-[11px] text-slate-500 font-mono hidden sm:block">
-          Tastatur: Pfeil links (←) / rechts (→) zum Blättern · (+) / (-) zum Zoomen
+          Tastatur: Pfeile (←)/(→) Blättern · (+)/(-) Zoom · Shift + (←)/(→) Sichtbereich
         </div>
       </div>
     </div>
