@@ -37,6 +37,7 @@ import {
   MessageSquare,
   Clock,
   BookOpen,
+  LogOut,
 } from 'lucide-react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import {
@@ -51,6 +52,7 @@ import {
   saveExam,
   deleteExam,
   deactivateAllExams,
+  activateAllExams,
   getAllStudents,
   getAllSubmissions,
   deleteExamSubmission,
@@ -87,12 +89,15 @@ import {
 } from '../data/knownExams';
 
 interface TeacherDashboardProps {
+  exams?: ExamDefinition[];
+  results?: any[];
   onSelectExamForPreview: (exam: ExamDefinition) => void;
   onClose: () => void;
   onExamsChange?: (exams: ExamDefinition[]) => void;
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
+  exams: propExams = [],
   onSelectExamForPreview,
   onClose,
   onExamsChange,
@@ -102,7 +107,13 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   );
 
   // Data states
-  const [exams, setExams] = useState<ExamDefinition[]>([]);
+  const [exams, setExams] = useState<ExamDefinition[]>(propExams);
+
+  useEffect(() => {
+    if (propExams && propExams.length > 0) {
+      setExams(propExams);
+    }
+  }, [propExams]);
   const [students, setStudents] = useState<StudentProfile[]>([]);
   const [submissions, setSubmissions] = useState<ExamSubmission[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -324,12 +335,49 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     }
 
     try {
-      const updated = await deactivateAllExams();
+      const updated = await deactivateAllExams(exams);
       setExams(updated);
+      onExamsChange?.(updated);
     } catch (err) {
       console.error('Fehler beim Deaktivieren aller Prüfungen:', err);
       // Fallback state update
-      setExams((prev) => prev.map((e) => ({ ...e, isActive: false })));
+      const fallback = exams.map((e) => ({ ...e, isActive: false }));
+      setExams(fallback);
+      onExamsChange?.(fallback);
+    }
+  };
+
+  const handleActivateAllExams = async () => {
+    const inactiveCount = exams.filter((e) => !e.isActive).length;
+    if (inactiveCount === 0) {
+      alert('Es sind bereits alle hinterlegten Prüfungshefte für Schüler freigeschaltet.');
+      return;
+    }
+
+    // Prüfen, ob Bögen ohne hinterlegten Lösungsschlüssel existieren
+    const missingSolutions = exams.filter(
+      (e) => !e.isActive && Object.keys(e.solutions || {}).length === 0
+    );
+
+    let confirmMsg = `Möchtest du wirklich alle ${exams.length} Prüfungshefte mit einem Klick freigeben (für Schüler sofort sichtbar schalten)?`;
+    if (missingSolutions.length > 0) {
+      confirmMsg = `Hinweis: Bei ${missingSolutions.length} Prüfungsbogen/-bögen ist noch kein Lösungsschlüssel hinterlegt.\n\nMöchtest du trotzdem alle ${exams.length} Prüfungshefte freigeben?`;
+    }
+
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    try {
+      const updated = await activateAllExams(exams);
+      setExams(updated);
+      onExamsChange?.(updated);
+    } catch (err) {
+      console.error('Fehler beim Aktivieren aller Prüfungen:', err);
+      // Fallback state update
+      const fallback = exams.map((e) => ({ ...e, isActive: true }));
+      setExams(fallback);
+      onExamsChange?.(fallback);
     }
   };
 
@@ -957,11 +1005,22 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
 
           <button
             onClick={loadData}
-            className="p-2 bg-sbsz-navy/70 hover:bg-sbsz-navy rounded-xl text-white transition-colors"
+            className="p-2 bg-sbsz-navy/70 hover:bg-sbsz-navy rounded-xl text-white transition-colors cursor-pointer"
             title="Daten aktualisieren"
           >
             <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
+
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-white/20 cursor-pointer"
+              title="Lehrerbereich verlassen und zur Prüfungsauswahl zurückkehren"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Zurück zur App</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1431,14 +1490,25 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </p>
             </div>
 
-            <button
-              onClick={handleDeactivateAllExams}
-              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
-              title="Sperrt alle Prüfungshefte auf einmal, sodass Schüler aktuell keinen Bogen bearbeiten können"
-            >
-              <Lock className="w-3.5 h-3.5 text-rose-600" />
-              <span>Alle Prüfungen sperren (1-Klick-Deaktivierung)</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleActivateAllExams}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Gibt alle Prüfungshefte auf einmal frei, sodass Schüler alle Bögen bearbeiten können"
+              >
+                <Unlock className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Alle Prüfungen freigeben (1-Klick-Freischaltung)</span>
+              </button>
+
+              <button
+                onClick={handleDeactivateAllExams}
+                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-300 shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Sperrt alle Prüfungshefte auf einmal, sodass Schüler aktuell keinen Bogen bearbeiten können"
+              >
+                <Lock className="w-3.5 h-3.5 text-rose-600" />
+                <span>Alle Prüfungen sperren (1-Klick-Deaktivierung)</span>
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

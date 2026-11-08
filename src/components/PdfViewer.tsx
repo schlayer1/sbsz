@@ -88,7 +88,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
   const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 15, 60));
   const handleZoomReset = () => setZoomLevel(100);
 
-  // Tastaturnavigation für seitenweises Blättern (← / →)
+  // Tastaturnavigation für seitenweises Blättern (← / →) und Zoom (+ / - / 0)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -102,6 +102,12 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
         onPageChange(currentPage + 1);
       } else if (e.key === 'ArrowLeft' && currentPage > 1) {
         onPageChange(currentPage - 1);
+      } else if (e.key === '+' || e.key === '=') {
+        handleZoomIn();
+      } else if (e.key === '-' || e.key === '_') {
+        handleZoomOut();
+      } else if (e.key === '0') {
+        handleZoomReset();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -359,7 +365,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
       {/* Main Document Viewer Canvas: Immer exakt eine Seite zentriert & stabil eingepasst */}
       <div
         ref={containerRef}
-        className="flex-1 bg-slate-950 overflow-auto p-1 sm:p-2 flex items-start justify-center relative select-none w-full"
+        className={`flex-1 bg-slate-950 overflow-auto p-1 sm:p-2 flex items-start relative select-none w-full ${
+          zoomLevel > 100 ? 'justify-start' : 'justify-center'
+        }`}
       >
         {isPdfLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-xs z-10 space-y-3">
@@ -368,27 +376,45 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           </div>
         )}
 
-        <div className="w-full h-full flex flex-col items-center justify-start min-h-0">
+        <div
+          className={`w-full h-full flex flex-col min-h-0 ${
+            zoomLevel > 100 ? 'items-start justify-start' : 'items-center justify-start'
+          }`}
+        >
           {isSampleWithImages ? (
             /* Modus 1: Vorgerenderte Buchseiten (Beispielprüfung Sommer 2025) */
             <div
-              className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 transition-all duration-150 flex items-center justify-center w-full"
+              className={`transition-all duration-150 flex items-center ${
+                zoomLevel > 100 ? 'justify-start' : 'justify-center w-full'
+              }`}
               style={{
                 width: zoomLevel === 100 ? '100%' : `${zoomLevel}%`,
                 maxWidth: zoomLevel <= 100 ? '1200px' : 'none',
               }}
             >
-              <img
-                src={pageImagePath}
-                alt={`IHK Prüfungsbogen Seite ${currentPage}`}
-                className="w-full h-auto object-contain block select-none pointer-events-none"
-                loading="eager"
-              />
+              <div className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 w-full">
+                <img
+                  src={pageImagePath}
+                  alt={`IHK Prüfungsbogen Seite ${currentPage}`}
+                  className="w-full h-auto object-contain block select-none pointer-events-none"
+                  loading="eager"
+                />
+              </div>
             </div>
           ) : pdfDoc ? (
             /* Modus 2: Echte PDF-Seiten vektorscharf über PDF.js Canvas gerendert (immer exakt 1 Seite) */
-            <div className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 flex items-center justify-center max-w-full">
-              <canvas ref={canvasRef} className="block shadow-md max-w-full h-auto" />
+            <div
+              className={`transition-all duration-150 flex items-center ${
+                zoomLevel > 100 ? 'justify-start' : 'justify-center max-w-full'
+              }`}
+              style={{
+                width: zoomLevel <= 100 ? '100%' : 'auto',
+                maxWidth: zoomLevel <= 100 ? '1200px' : 'none',
+              }}
+            >
+              <div className="bg-white rounded-xl shadow-2xl overflow-hidden border border-slate-700 flex items-center justify-center">
+                <canvas ref={canvasRef} className="block shadow-md" />
+              </div>
             </div>
           ) : pdfError ? (
             /* Modus 3: Fallback bei PDF-CORS/Drive-Link - Vollflächig, maximal groß und glasklar lesbar */
@@ -399,7 +425,9 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                   <span className="font-medium text-slate-200">Google Drive Vorschau eingebettet</span>
                   <span className="text-slate-500 hidden sm:inline">•</span>
-                  <span className="text-slate-400 hidden sm:inline">Vollbild-Darstellung aktiv</span>
+                  <span className="text-slate-400 hidden sm:inline">
+                    {zoomLevel === 100 ? 'Vollbild-Darstellung aktiv' : `Zoom: ${zoomLevel}%`}
+                  </span>
                 </div>
                 {exam.pdfUrl && (
                   <a
@@ -414,14 +442,38 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
                 )}
               </div>
 
-              {/* Iframe nimmt 100% der verfügbaren Höhe und Breite ein */}
-              <div className="flex-1 w-full bg-white rounded-xl overflow-hidden shadow-2xl border border-slate-700 min-h-0">
-                <iframe
-                  src={formatPdfEmbedUrl(exam.pdfUrl, currentPage)}
-                  title="IHK Prüfungsheft PDF"
-                  className="w-full h-full border-0 block"
-                  allow="autoplay"
-                />
+              {/* Iframe mit nativer Zoom- und Scrollunterstützung */}
+              <div className="flex-1 w-full min-h-0 overflow-auto rounded-xl relative">
+                <div
+                  style={{
+                    width: zoomLevel > 100 ? `${zoomLevel}%` : '100%',
+                    height: zoomLevel > 100 ? `${zoomLevel}%` : '100%',
+                    minWidth: '100%',
+                    minHeight: '100%',
+                    display: 'flex',
+                    alignItems: zoomLevel > 100 ? 'flex-start' : 'center',
+                    justifyContent: zoomLevel > 100 ? 'flex-start' : 'center',
+                  }}
+                >
+                  <div
+                    className="bg-white rounded-xl overflow-hidden shadow-2xl border border-slate-700 w-full h-full"
+                    style={{
+                      width: zoomLevel > 100 ? `${(100 / (zoomLevel / 100))}%` : `${zoomLevel}%`,
+                      height: zoomLevel > 100 ? `${(100 / (zoomLevel / 100))}%` : `${zoomLevel}%`,
+                      maxWidth: zoomLevel > 100 ? 'none' : '100%',
+                      maxHeight: zoomLevel > 100 ? 'none' : '100%',
+                      transform: zoomLevel > 100 ? `scale(${zoomLevel / 100})` : undefined,
+                      transformOrigin: '0 0',
+                    }}
+                  >
+                    <iframe
+                      src={formatPdfEmbedUrl(exam.pdfUrl, currentPage)}
+                      title="IHK Prüfungsheft PDF"
+                      className="w-full h-full border-0 block"
+                      allow="autoplay"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           ) : null}
@@ -440,7 +492,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({
           </span>
         </div>
         <div className="text-[11px] text-slate-500 font-mono hidden sm:block">
-          Tastatur: Pfeil links (←) / rechts (→) zum Blättern
+          Tastatur: Pfeil links (←) / rechts (→) zum Blättern · (+) / (-) zum Zoomen
         </div>
       </div>
     </div>

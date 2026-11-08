@@ -240,9 +240,9 @@ export async function saveExam(exam: ExamDefinition): Promise<void> {
   }
 }
 
-export async function deactivateAllExams(): Promise<ExamDefinition[]> {
-  const local = getLocalExams();
-  const updatedList = local.map((e) => ({ ...e, isActive: false }));
+export async function deactivateAllExams(currentExams?: ExamDefinition[]): Promise<ExamDefinition[]> {
+  const baseList = currentExams && currentExams.length > 0 ? currentExams : getLocalExams();
+  const updatedList = baseList.map((e) => ({ ...e, isActive: false }));
   localStorage.setItem(LOCAL_EXAMS_CACHE_KEY, JSON.stringify(updatedList));
   notifyExamSubscribers(updatedList);
 
@@ -258,6 +258,30 @@ export async function deactivateAllExams(): Promise<ExamDefinition[]> {
       console.log('[Firebase] Alle Prüfungen in Firestore erfolgreich deaktiviert.');
     } catch (err) {
       console.warn('[Firebase] Fehler beim Deaktivieren aller Prüfungen in Firestore:', err);
+    }
+  }
+
+  return updatedList;
+}
+
+export async function activateAllExams(currentExams?: ExamDefinition[]): Promise<ExamDefinition[]> {
+  const baseList = currentExams && currentExams.length > 0 ? currentExams : getLocalExams();
+  const updatedList = baseList.map((e) => ({ ...e, isActive: true }));
+  localStorage.setItem(LOCAL_EXAMS_CACHE_KEY, JSON.stringify(updatedList));
+  notifyExamSubscribers(updatedList);
+
+  if (db) {
+    try {
+      const colRef = collection(db, EXAMS_COLLECTION);
+      const snap = await getDocs(colRef);
+      const batch = writeBatch(db);
+      snap.forEach((docSnap) => {
+        batch.update(docSnap.ref, { isActive: true });
+      });
+      await batch.commit();
+      console.log('[Firebase] Alle Prüfungen in Firestore erfolgreich aktiviert.');
+    } catch (err) {
+      console.warn('[Firebase] Fehler beim Aktivieren aller Prüfungen in Firestore:', err);
     }
   }
 
