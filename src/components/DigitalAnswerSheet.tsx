@@ -50,7 +50,8 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
   const [manuallyExpanded, setManuallyExpanded] = useState<Record<number, boolean>>({});
 
   const nonDeselectableSet = new Set(exam.nonDeselectableQuestions || [6, 7, 8, 9, 12, 16, 20, 28]);
-  const deselectedCount = deselected.length;
+  const effectiveDeselected = deselected.filter((q) => !nonDeselectableSet.has(q));
+  const deselectedCount = effectiveDeselected.length;
 
   const totalQuestions = exam.totalQuestions || 28;
   const requiredQuestions = exam.requiredQuestions || totalQuestions;
@@ -70,7 +71,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
   // Count answered questions that are NOT deselected
   const answeredCount = Object.keys(answers).filter((qStr) => {
     const qNum = Number(qStr);
-    return answers[qNum] !== undefined && !deselected.includes(qNum);
+    return answers[qNum] !== undefined && !effectiveDeselected.includes(qNum);
   }).length;
 
   const isCompleted = answeredCount >= requiredQuestions;
@@ -388,7 +389,7 @@ export const DigitalAnswerSheet: React.FC<DigitalAnswerSheetProps> = ({
       <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-2">
         {displayedQuestions.map((qNum) => {
           const isNonDeselectable = nonDeselectableSet.has(qNum);
-          const isDeselected = deselected.includes(qNum);
+          const isDeselected = !isNonDeselectable && effectiveDeselected.includes(qNum);
           const selectedOption = answers[qNum];
           const qDef = exam.questions.find((q) => q.number === qNum);
           const pageNumber = qDef?.pageNumber || 3;

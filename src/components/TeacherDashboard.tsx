@@ -42,6 +42,7 @@ import {
 import { MarkdownRenderer } from './MarkdownRenderer';
 import {
   ExamDefinition,
+  ExamQuestion,
   StudentProfile,
   ExamSubmission,
   FirebaseCustomConfig,
@@ -94,6 +95,76 @@ interface TeacherDashboardProps {
   onSelectExamForPreview: (exam: ExamDefinition) => void;
   onClose: () => void;
   onExamsChange?: (exams: ExamDefinition[]) => void;
+}
+
+/** Parst und normalisiert eine Liste nicht abwählbarer Aufgabennummern. */
+function parseNonDeselectableInput(raw: string, totalQuestions: number): number[] {
+  const unique = new Set<number>();
+  for (const part of raw.split(/[,;\s]+/)) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const num = parseInt(trimmed, 10);
+    if (!Number.isNaN(num) && num >= 1 && num <= totalQuestions) {
+      unique.add(num);
+    }
+  }
+  return Array.from(unique).sort((a, b) => a - b);
+}
+
+/** Prüft, ob nach Abzug der Pflichtaufgaben noch genügend abwählbare Aufgaben übrig bleiben. */
+function validateNonDeselectableCount(
+  selected: number[],
+  totalQuestions: number,
+  maxDeselections: number
+): string | null {
+  const maxAllowed = Math.max(0, totalQuestions - (maxDeselections || 0));
+  if (selected.length > maxAllowed) {
+    return `Maximal ${maxAllowed} Pflichtaufgaben möglich, damit mindestens ${maxDeselections} Aufgaben abwählbar bleiben.`;
+  }
+  return null;
+}
+
+/** Aktualisiert nonDeselectableQuestions und synchronisiert questions[].isNonDeselectable. */
+function buildUpdatedExamWithNonDeselectable(
+  exam: ExamDefinition,
+  nonDeselectable: number[],
+  totalQuestions?: number,
+  solutions?: Record<number, number>
+): ExamDefinition {
+  const targetTotal = totalQuestions ?? exam.totalQuestions;
+  const normalized = Array.from(
+    new Set(nonDeselectable.filter((n) => n >= 1 && n <= targetTotal))
+  ).sort((a, b) => a - b);
+  const lockedSet = new Set(normalized);
+
+  const existingByNum = new Map<number, ExamQuestion>(
+    (exam.questions || []).map((q) => [q.number, q])
+  );
+
+  const updatedQuestions: ExamQuestion[] = Array.from({ length: targetTotal }, (_, i) => {
+    const qNum = i + 1;
+    const existing = existingByNum.get(qNum);
+    if (existing) {
+      return {
+        ...existing,
+        isNonDeselectable: lockedSet.has(qNum),
+      };
+    }
+    return {
+      number: qNum,
+      isNonDeselectable: lockedSet.has(qNum),
+      pageNumber: 3,
+      topic: `Aufgabe ${qNum}`,
+    };
+  });
+
+  return {
+    ...exam,
+    totalQuestions: targetTotal,
+    nonDeselectableQuestions: normalized,
+    questions: updatedQuestions,
+    ...(solutions !== undefined ? { solutions } : {}),
+  };
 }
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
@@ -181,10 +252,19 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const [editCode, setEditCode] = useState('');
   const [editSubtitle, setEditSubtitle] = useState('');
 
+  // Inline Non-Deselectable Questions Editor States
+  const [editingNonDeselectableExamId, setEditingNonDeselectableExamId] = useState<string | null>(null);
+  const [inlineNonDeselectableList, setInlineNonDeselectableList] = useState<number[]>([]);
+  const [inlineNonDeselectableStr, setInlineNonDeselectableStr] = useState<string>('');
+  const [inlineNonDeselectableError, setInlineNonDeselectableError] = useState<string | null>(null);
+
   // Solution Key Editor States
   const [editingSolutionsExam, setEditingSolutionsExam] = useState<ExamDefinition | null>(null);
   const [tempSolutions, setTempSolutions] = useState<Record<number, number>>({});
   const [tempTotalQuestions, setTempTotalQuestions] = useState<number>(28);
+  const [tempNonDeselectable, setTempNonDeselectable] = useState<number[]>([]);
+  const [tempNonDeselectableStr, setTempNonDeselectableStr] = useState<string>('');
+  const [solutionModalError, setSolutionModalError] = useState<string | null>(null);
   const [isExtractingSolutions, setIsExtractingSolutions] = useState<boolean>(false);
   const [extractionNotice, setExtractionNotice] = useState<string | null>(null);
   const [extractionError, setExtractionError] = useState<string | null>(null);
@@ -381,11 +461,85 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
     }
   };
 
+  const persistUpdatedExam = async (updatedExam: ExamDefinition) => {
+    const nextExams = exams.map((e) => (e.id === updatedExam.id ? updatedExam : e));
+    setExams(nextExams);
+    onExamsChange?.(nextExams);
+    await saveExam(updatedExam);
+  };
+
+  const handleStartEditNonDeselectable = (exam: ExamDefinition) => {
+    const initialList = parseNonDeselectableInput(
+      (exam.nonDeselectableQuestions || []).join(', '),
+      exam.totalQuestions || 28
+    );
+    setEditingNonDeselectableExamId(exam.id);
+    setInlineNonDeselectableList(initialList);
+    setInlineNonDeselectableStr(initialList.join(', '));
+    setInlineNonDeselectableError(null);
+  };
+
+  const handleCancelNonDeselectableEdit = () => {
+    setEditingNonDeselectableExamId(null);
+    setInlineNonDeselectableError(null);
+  };
+
+  const handleToggleInlineNonDeselectable = (qNum: number, totalQuestions: number) => {
+    const next = inlineNonDeselectableList.includes(qNum)
+      ? inlineNonDeselectableList.filter((n) => n !== qNum)
+      : [...inlineNonDeselectableList, qNum]
+          .filter((n) => n >= 1 && n <= totalQuestions)
+          .sort((a, b) => a - b);
+    setInlineNonDeselectableList(next);
+    setInlineNonDeselectableStr(next.join(', '));
+    if (inlineNonDeselectableError) setInlineNonDeselectableError(null);
+  };
+
+  const handleSaveNonDeselectableExam = async (exam: ExamDefinition) => {
+    const parsedList = parseNonDeselectableInput(
+      inlineNonDeselectableStr,
+      exam.totalQuestions || 28
+    );
+    const validationErr = validateNonDeselectableCount(
+      parsedList,
+      exam.totalQuestions || 28,
+      exam.maxDeselections || 0
+    );
+    if (validationErr) {
+      setInlineNonDeselectableError(validationErr);
+      return;
+    }
+
+    const updatedExam = buildUpdatedExamWithNonDeselectable(exam, parsedList);
+    setEditingNonDeselectableExamId(null);
+    setInlineNonDeselectableError(null);
+    await persistUpdatedExam(updatedExam);
+  };
+
+  const handleToggleModalNonDeselectable = (qNum: number) => {
+    const next = tempNonDeselectable.includes(qNum)
+      ? tempNonDeselectable.filter((n) => n !== qNum)
+      : [...tempNonDeselectable, qNum]
+          .filter((n) => n >= 1 && n <= tempTotalQuestions)
+          .sort((a, b) => a - b);
+    setTempNonDeselectable(next);
+    setTempNonDeselectableStr(next.join(', '));
+    if (solutionModalError) setSolutionModalError(null);
+  };
+
   const handleOpenSolutionEditor = (exam: ExamDefinition) => {
+    const totalCount = exam.totalQuestions || 28;
+    const initialNonDeselectable = parseNonDeselectableInput(
+      (exam.nonDeselectableQuestions || []).join(', '),
+      totalCount
+    );
     setEditingSolutionsExam(exam);
     setExtractionNotice(null);
     setExtractionError(null);
-    setTempTotalQuestions(exam.totalQuestions || 28);
+    setSolutionModalError(null);
+    setTempTotalQuestions(totalCount);
+    setTempNonDeselectable(initialNonDeselectable);
+    setTempNonDeselectableStr(initialNonDeselectable.join(', '));
 
     // Preload solutions or pre-fill with known solutions if empty
     let existingSolutions = { ...(exam.solutions || {}) };
@@ -404,33 +558,30 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
   const handleSaveSolutions = async () => {
     if (!editingSolutionsExam) return;
 
-    // Dynamisch Fragenkatalog aktualisieren, falls Fragenanzahl geändert wurde
-    let updatedQuestions = [...editingSolutionsExam.questions];
-    if (updatedQuestions.length !== tempTotalQuestions) {
-      updatedQuestions = Array.from({ length: tempTotalQuestions }, (_, i) => {
-        const qNum = i + 1;
-        const existing = editingSolutionsExam.questions.find((q) => q.number === qNum);
-        return (
-          existing || {
-            number: qNum,
-            isNonDeselectable: editingSolutionsExam.nonDeselectableQuestions?.includes(qNum) || false,
-            pageNumber: 3,
-            topic: `Aufgabe ${qNum}`,
-          }
-        );
-      });
+    const parsedNonDeselectable = parseNonDeselectableInput(
+      tempNonDeselectableStr,
+      tempTotalQuestions
+    );
+    const validationErr = validateNonDeselectableCount(
+      parsedNonDeselectable,
+      tempTotalQuestions,
+      editingSolutionsExam.maxDeselections || 0
+    );
+    if (validationErr) {
+      setSolutionModalError(validationErr);
+      return;
     }
 
-    const updatedExam: ExamDefinition = {
-      ...editingSolutionsExam,
-      totalQuestions: tempTotalQuestions,
-      questions: updatedQuestions,
-      solutions: { ...tempSolutions },
-    };
+    const updatedExam = buildUpdatedExamWithNonDeselectable(
+      editingSolutionsExam,
+      parsedNonDeselectable,
+      tempTotalQuestions,
+      { ...tempSolutions }
+    );
 
-    await saveExam(updatedExam);
-    setExams((prev) => prev.map((e) => (e.id === editingSolutionsExam.id ? updatedExam : e)));
     setEditingSolutionsExam(null);
+    setSolutionModalError(null);
+    await persistUpdatedExam(updatedExam);
   };
 
   const handleExtractFromFile = async (file: File) => {
@@ -463,11 +614,27 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       }
 
       setTempSolutions(result.solutions);
+      const nextTotal =
+        result.totalQuestions && result.totalQuestions > 0
+          ? result.totalQuestions
+          : tempTotalQuestions;
       if (result.totalQuestions && result.totalQuestions > 0) {
         setTempTotalQuestions(result.totalQuestions);
       }
+      if (result.nonDeselectableQuestions && result.nonDeselectableQuestions.length > 0) {
+        const parsedNon = parseNonDeselectableInput(
+          result.nonDeselectableQuestions.join(', '),
+          nextTotal
+        );
+        setTempNonDeselectable(parsedNon);
+        setTempNonDeselectableStr(parsedNon.join(', '));
+      }
       setExtractionNotice(
-        `✓ Erfolgreich eingelesen: ${Object.keys(result.solutions).length} Aufgaben erkannt (${result.notes || 'IHK-Musterlösung'}).`
+        `✓ Erfolgreich eingelesen: ${Object.keys(result.solutions).length} Aufgaben erkannt${
+          result.nonDeselectableQuestions && result.nonDeselectableQuestions.length > 0
+            ? `, Pflichtaufgaben: ${result.nonDeselectableQuestions.join(', ')}`
+            : ''
+        } (${result.notes || 'IHK-Musterlösung'}).`
       );
     } catch (err: any) {
       console.error('Fehler bei KI-Lösungsextraktion:', err);
@@ -1626,15 +1793,157 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                     </>
                   )}
 
-                  <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1 text-slate-600">
+                  <div className="mt-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-2 text-slate-600">
                     <div>
                       <strong>Umfang:</strong> {exam.totalQuestions} Aufgaben ({exam.requiredQuestions} zu werten,{' '}
                       {exam.maxDeselections} abwählbar)
                     </div>
-                    <div>
-                      <strong>Nicht abwählbar:</strong> Aufgaben{' '}
-                      {exam.nonDeselectableQuestions?.join(', ')}
-                    </div>
+                    {editingNonDeselectableExamId === exam.id ? (
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleSaveNonDeselectableExam(exam);
+                        }}
+                        className="bg-white p-3 rounded-xl border border-blue-200 shadow-xs space-y-2.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                            <Lock className="w-3.5 h-3.5 text-sbsz-blue" />
+                            <span>Nicht abwählbare Aufgaben (Pflichtaufgaben)</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleCancelNonDeselectableEdit}
+                            className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                            aria-label="Bearbeitung abbrechen"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+
+                        <fieldset className="space-y-2">
+                          <legend className="text-[11px] text-slate-600">
+                            Aufgaben per Klick sperren oder freigeben ({inlineNonDeselectableList.length} gewählt
+                            {exam.maxDeselections > 0
+                              ? `, max. ${Math.max(0, exam.totalQuestions - exam.maxDeselections)}`
+                              : ''}
+                            ):
+                          </legend>
+                          <div className="grid grid-cols-7 sm:grid-cols-10 gap-1">
+                            {Array.from({ length: exam.totalQuestions }, (_, i) => i + 1).map((qNum) => {
+                              const isLocked = inlineNonDeselectableList.includes(qNum);
+                              return (
+                                <button
+                                  key={qNum}
+                                  type="button"
+                                  aria-pressed={isLocked}
+                                  onClick={() => handleToggleInlineNonDeselectable(qNum, exam.totalQuestions)}
+                                  className={`py-1.5 rounded-lg font-bold text-xs flex items-center justify-center gap-0.5 transition-all border ${
+                                    isLocked
+                                      ? 'bg-sbsz-darkBlue text-white border-sbsz-darkBlue shadow-xs'
+                                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                  }`}
+                                  title={
+                                    isLocked
+                                      ? `Aufgabe ${qNum}: Nicht abwählbar (klicken zum Freigeben)`
+                                      : `Aufgabe ${qNum}: Abwählbar (klicken als Pflichtaufgabe sperren)`
+                                  }
+                                >
+                                  {isLocked && <Lock className="w-2.5 h-2.5 text-amber-300 shrink-0" />}
+                                  <span>{qNum}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </fieldset>
+
+                        <div>
+                          <label
+                            htmlFor={`non-deselectable-input-${exam.id}`}
+                            className="block text-[11px] font-bold text-slate-700 mb-1"
+                          >
+                            Oder Aufgabennummern kommagetrennt eingeben:
+                          </label>
+                          <input
+                            id={`non-deselectable-input-${exam.id}`}
+                            name="nonDeselectableQuestions"
+                            type="text"
+                            value={inlineNonDeselectableStr}
+                            aria-invalid={inlineNonDeselectableError ? 'true' : undefined}
+                            aria-describedby={`non-deselectable-help-${exam.id}${
+                              inlineNonDeselectableError ? ` non-deselectable-err-${exam.id}` : ''
+                            }`}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setInlineNonDeselectableStr(val);
+                              setInlineNonDeselectableList(
+                                parseNonDeselectableInput(val, exam.totalQuestions)
+                              );
+                              if (inlineNonDeselectableError) setInlineNonDeselectableError(null);
+                            }}
+                            onBlur={() => {
+                              const parsed = parseNonDeselectableInput(
+                                inlineNonDeselectableStr,
+                                exam.totalQuestions
+                              );
+                              setInlineNonDeselectableList(parsed);
+                              setInlineNonDeselectableStr(parsed.join(', '));
+                            }}
+                            placeholder="z. B. 6, 7, 8, 9, 12, 16, 20, 28"
+                            className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 text-xs font-mono font-semibold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-sbsz-blue"
+                          />
+                          <p id={`non-deselectable-help-${exam.id}`} className="text-[10px] text-slate-500 mt-0.5">
+                            Leer lassen, wenn alle Aufgaben abwählbar sein sollen.
+                          </p>
+                          {inlineNonDeselectableError && (
+                            <p
+                              id={`non-deselectable-err-${exam.id}`}
+                              role="alert"
+                              className="text-[11px] text-rose-700 font-bold mt-1"
+                            >
+                              {inlineNonDeselectableError}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center justify-end gap-2 pt-1">
+                          <button
+                            type="button"
+                            onClick={handleCancelNonDeselectableEdit}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                          >
+                            Abbrechen
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-sbsz-blue hover:bg-sbsz-darkBlue text-white shadow-xs transition-colors flex items-center gap-1"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Pflichtaufgaben speichern</span>
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <strong>Nicht abwählbar:</strong>{' '}
+                          {exam.nonDeselectableQuestions && exam.nonDeselectableQuestions.length > 0 ? (
+                            <span>Aufgaben {exam.nonDeselectableQuestions.join(', ')}</span>
+                          ) : (
+                            <span className="text-slate-500 italic">Keine (alle abwählbar)</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleStartEditNonDeselectable(exam)}
+                          className="bg-slate-200/80 hover:bg-blue-100 text-slate-700 hover:text-sbsz-darkBlue px-2 py-0.5 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors border border-slate-300 shrink-0"
+                          title="Nicht abwählbare Aufgaben (Pflichtaufgaben) manuell ändern"
+                        >
+                          <Lock className="w-3 h-3" />
+                          <span>Ändern</span>
+                        </button>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between pt-1">
                       <div>
                         <strong>Lösungsschlüssel:</strong>{' '}
@@ -2795,24 +3104,70 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   </span>
                 </div>
 
-                {/* Dynamische Aufgabenanzahl Steuerung */}
-                <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
-                  <span className="font-bold text-slate-700 text-xs">Fragenanzahl:</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={60}
-                    value={tempTotalQuestions}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val) && val >= 1 && val <= 60) {
-                        setTempTotalQuestions(val);
-                      }
-                    }}
-                    className="w-14 px-2 py-0.5 rounded-lg bg-white border border-slate-300 font-bold font-mono text-center text-xs focus:ring-2 focus:ring-sbsz-blue focus:outline-none"
-                  />
-                  <span className="text-slate-400 text-[11px]">Aufgaben</span>
+                {/* Dynamische Aufgabenanzahl & Pflichtaufgaben-Steuerung */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                    <label htmlFor="modal-total-questions" className="font-bold text-slate-700 text-xs">
+                      Fragenanzahl:
+                    </label>
+                    <input
+                      id="modal-total-questions"
+                      type="number"
+                      min={1}
+                      max={60}
+                      value={tempTotalQuestions}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val) && val >= 1 && val <= 60) {
+                          setTempTotalQuestions(val);
+                          const clamped = tempNonDeselectable.filter((n) => n <= val);
+                          setTempNonDeselectable(clamped);
+                          setTempNonDeselectableStr(clamped.join(', '));
+                        }
+                      }}
+                      className="w-14 px-2 py-0.5 rounded-lg bg-white border border-slate-300 font-bold font-mono text-center text-xs focus:ring-2 focus:ring-sbsz-blue focus:outline-none"
+                    />
+                    <span className="text-slate-400 text-[11px]">Aufgaben</span>
+                  </div>
                 </div>
+              </div>
+
+              {/* Nicht abwählbare Aufgaben (Schnellbearbeitung im Modal) */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white rounded-xl border border-slate-200">
+                <div className="flex items-center gap-2 flex-1 min-w-[220px]">
+                  <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <label
+                    htmlFor="modal-non-deselectable-input"
+                    className="font-bold text-slate-700 text-xs shrink-0"
+                  >
+                    Nicht abwählbar:
+                  </label>
+                  <input
+                    id="modal-non-deselectable-input"
+                    type="text"
+                    value={tempNonDeselectableStr}
+                    aria-invalid={solutionModalError ? 'true' : undefined}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTempNonDeselectableStr(val);
+                      setTempNonDeselectable(parseNonDeselectableInput(val, tempTotalQuestions));
+                      if (solutionModalError) setSolutionModalError(null);
+                    }}
+                    onBlur={() => {
+                      const parsed = parseNonDeselectableInput(
+                        tempNonDeselectableStr,
+                        tempTotalQuestions
+                      );
+                      setTempNonDeselectable(parsed);
+                      setTempNonDeselectableStr(parsed.join(', '));
+                    }}
+                    placeholder="z. B. 6, 7, 8, 9, 12, 16, 20, 28"
+                    className="flex-1 min-w-[140px] px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-300 font-mono font-semibold text-xs text-slate-800 focus:bg-white focus:ring-2 focus:ring-sbsz-blue focus:outline-none"
+                  />
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  {tempNonDeselectable.length} Pflichtaufgabe{tempNonDeselectable.length === 1 ? '' : 'n'} (oder unten direkt umschalten)
+                </span>
               </div>
 
               {/* Status & Feedback Messages */}
@@ -2829,6 +3184,16 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <span>{extractionError}</span>
                 </div>
               )}
+
+              {solutionModalError && (
+                <div
+                  role="alert"
+                  className="p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl font-bold text-xs flex items-center gap-2 animate-fade-in"
+                >
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{solutionModalError}</span>
+                </div>
+              )}
             </div>
 
             {/* Questions Grid (dynamisch tempTotalQuestions Aufgaben mit 1-5 radio selectors) */}
@@ -2837,7 +3202,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                 {Array.from({ length: tempTotalQuestions }, (_, i) => i + 1).map((qNum) => {
                   const currentAns = tempSolutions[qNum];
                   const qDef = editingSolutionsExam.questions.find((q) => q.number === qNum);
-                  const isLocked = qDef?.isNonDeselectable;
+                  const isLocked = tempNonDeselectable.includes(qNum);
 
                   return (
                     <div
@@ -2848,15 +3213,28 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                           : 'bg-rose-50/50 border-rose-200'
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center justify-between mb-2 gap-1.5">
                         <span className="font-extrabold text-xs text-slate-800">
                           Aufgabe {qNum}
                         </span>
-                        {isLocked && (
-                          <span className="text-[10px] font-bold bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded border border-amber-200">
-                            Pflicht
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          aria-pressed={isLocked}
+                          onClick={() => handleToggleModalNonDeselectable(qNum)}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 transition-colors cursor-pointer ${
+                            isLocked
+                              ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200'
+                          }`}
+                          title={
+                            isLocked
+                              ? `Aufgabe ${qNum}: Nicht abwählbar (klicken zum Freigeben)`
+                              : `Aufgabe ${qNum}: Abwählbar (klicken als Pflichtaufgabe sperren)`
+                          }
+                        >
+                          {isLocked && <Lock className="w-2.5 h-2.5 text-amber-700" />}
+                          <span>{isLocked ? 'Pflicht' : 'Abwählbar'}</span>
+                        </button>
                       </div>
 
                       {qDef?.topic && (

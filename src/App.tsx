@@ -225,7 +225,12 @@ export function App() {
       return;
     }
 
-    let newDeselected = [...deselected];
+    const nonDeselectableSet = new Set(activeExam.nonDeselectableQuestions || []);
+    if (nonDeselectableSet.has(questionNum)) {
+      return;
+    }
+
+    let newDeselected = deselected.filter((q) => !nonDeselectableSet.has(q));
     const newAnswers = { ...answers };
 
     if (newDeselected.includes(questionNum)) {
