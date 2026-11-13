@@ -2520,7 +2520,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                         Gemini analysiert die Fehler des Schülers...
                       </p>
                       <p className="text-xs text-slate-500">
-                        Kaskadenabfrage an gemini-flash-lite-latest läuft.
+                        Kaskadenabfrage an Gemini 4 Hydrogen / Flash läuft.
                       </p>
                     </div>
                   ) : (
