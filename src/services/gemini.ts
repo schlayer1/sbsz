@@ -1,15 +1,5 @@
 import { ExamDefinition, ExamScore, TeacherFeedback } from '../types/exam';
 
-const decodeDefaultKey = (): string => {
-  try {
-    const b64 = 'QVEuQWI4Uk42SUpRQTM1V0ZScTRfLTdsUFAxQVU1Y1l5bkVTN3VmekZjdjlyZktHMjhhV2c=';
-    if (typeof atob !== 'undefined') return atob(b64);
-    if (typeof Buffer !== 'undefined') return Buffer.from(b64, 'base64').toString('utf8');
-  } catch {}
-  return '';
-};
-
-export const DEFAULT_SCHOOL_GEMINI_KEY = decodeDefaultKey();
 export const LOCAL_GEMINI_KEY_STORAGE = 'sbsz_teacher_gemini_api_key';
 
 export const CANDIDATE_FLASH_MODELS = [
@@ -21,20 +11,22 @@ export const CANDIDATE_FLASH_MODELS = [
   'gemini-flash-latest',
 ];
 
+/**
+ * Gibt ausschließlich einen optional im Lehrer-Dashboard hinterlegten BYOK-Key zurück.
+ * Standardmäßig bleibt der Key leer, sodass sicher über /api/gemini gearbeitet wird.
+ */
 export function getActiveGeminiApiKey(): string {
   if (typeof window !== 'undefined') {
-    const customKey = localStorage.getItem(LOCAL_GEMINI_KEY_STORAGE);
-    if (customKey && customKey.trim().length > 10) {
-      return customKey.trim();
+    try {
+      const customKey = localStorage.getItem(LOCAL_GEMINI_KEY_STORAGE);
+      if (customKey && customKey.trim().length > 10) {
+        return customKey.trim();
+      }
+    } catch {
+      // ignore
     }
   }
-
-  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
-  if (envKey && envKey.trim().length > 10) {
-    return envKey.trim();
-  }
-
-  return DEFAULT_SCHOOL_GEMINI_KEY;
+  return '';
 }
 
 export function saveTeacherGeminiApiKey(key: string): void {
@@ -50,12 +42,46 @@ export function saveTeacherGeminiApiKey(key: string): void {
 let cachedWorkingModel: string | null = null;
 
 export async function executeWithCascade(prompt: string, systemInstruction?: string): Promise<string> {
-  const activeKey = getActiveGeminiApiKey();
-  if (!activeKey) {
-    throw new Error('Kein gültiger Google Gemini API-Schlüssel gefunden.');
+  const customKey = getActiveGeminiApiKey();
+
+  // 1. Primärer Pfad: Sicherer Serverless-Proxy (/api/gemini)
+  try {
+    const proxyRes = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: customKey || 'serverless-proxy',
+        userPrompt: prompt,
+        systemInstruction,
+        model: cachedWorkingModel || 'auto',
+        temperature: 0.4,
+        maxOutputTokens: 2048,
+      }),
+    });
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data?.text) {
+        cachedWorkingModel = data.model || cachedWorkingModel;
+        return data.text;
+      }
+    }
+
+    if (proxyRes.status !== 404) {
+      const errData = await proxyRes.json().catch(() => ({}));
+      throw new Error(errData?.error || `HTTP ${proxyRes.status} vom Gemini-Proxy`);
+    }
+  } catch (proxyErr: any) {
+    if (proxyErr?.message && !proxyErr.message.includes('404')) {
+      throw proxyErr;
+    }
   }
 
-  // Falls wir schon ein funktionierendes Modell kennen, dieses voranstellen
+  // 2. Fallback bei 404 nur mit persönlichem Lehrer-Key
+  if (!customKey) {
+    throw new Error('Der Gemini-Server-Proxy (/api/gemini) ist nicht erreichbar.');
+  }
+
   const modelsToTry = cachedWorkingModel
     ? [cachedWorkingModel, ...CANDIDATE_FLASH_MODELS.filter((m) => m !== cachedWorkingModel)]
     : CANDIDATE_FLASH_MODELS;
@@ -63,7 +89,7 @@ export async function executeWithCascade(prompt: string, systemInstruction?: str
   let lastError: any = null;
 
   for (const model of modelsToTry) {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(customKey)}`;
 
     try {
       const payload: any = {
@@ -331,9 +357,54 @@ export async function executeMultimodalCascade(
   mimeType: string,
   systemInstruction?: string
 ): Promise<string> {
-  const activeKey = getActiveGeminiApiKey();
-  if (!activeKey) {
-    throw new Error('Kein gültiger Google Gemini API-Schlüssel gefunden.');
+  const customKey = getActiveGeminiApiKey();
+  const parts = [
+    {
+      inlineData: {
+        mimeType,
+        data: base64Data,
+      },
+    },
+    { text: prompt },
+  ];
+
+  // 1. Primärer Pfad: Sicherer Serverless-Proxy (/api/gemini)
+  try {
+    const proxyRes = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: customKey || 'serverless-proxy',
+        parts,
+        systemInstruction,
+        model: cachedWorkingModel || 'auto',
+        temperature: 0.1,
+        maxOutputTokens: 2048,
+        responseMimeType: 'application/json',
+      }),
+    });
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      if (data?.text) {
+        cachedWorkingModel = data.model || cachedWorkingModel;
+        return data.text;
+      }
+    }
+
+    if (proxyRes.status !== 404) {
+      const errData = await proxyRes.json().catch(() => ({}));
+      throw new Error(errData?.error || `HTTP ${proxyRes.status} vom Gemini-Proxy`);
+    }
+  } catch (proxyErr: any) {
+    if (proxyErr?.message && !proxyErr.message.includes('404')) {
+      throw proxyErr;
+    }
+  }
+
+  // 2. Fallback bei 404 nur mit persönlichem Lehrer-Key
+  if (!customKey) {
+    throw new Error('Der Gemini-Server-Proxy (/api/gemini) ist nicht erreichbar.');
   }
 
   const modelsToTry = cachedWorkingModel
@@ -343,26 +414,18 @@ export async function executeMultimodalCascade(
   let lastError: any = null;
 
   for (const model of modelsToTry) {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${activeKey}`;
+    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(customKey)}`;
 
     try {
       const payload: any = {
         contents: [
           {
             role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType,
-                  data: base64Data,
-                },
-              },
-              { text: prompt },
-            ],
+            parts,
           },
         ],
         generationConfig: {
-          temperature: 0.1, // Sehr niedrige Temperatur für maximale Präzision bei Zahlen/Lösungen
+          temperature: 0.1,
           maxOutputTokens: 2048,
           responseMimeType: 'application/json',
         },
