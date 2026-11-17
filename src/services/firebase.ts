@@ -1,6 +1,9 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection,
   doc,
   getDoc,
@@ -14,6 +17,18 @@ import {
   onSnapshot,
   Firestore,
 } from 'firebase/firestore';
+
+function createPersistentFirestore(firebaseApp: FirebaseApp): Firestore {
+  try {
+    return initializeFirestore(firebaseApp, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch {
+    return getFirestore(firebaseApp);
+  }
+}
 import { getStorage, ref, uploadBytes, getDownloadURL, FirebaseStorage } from 'firebase/storage';
 import { ExamDefinition, StudentProfile, ExamSubmission, FirebaseCustomConfig, TeacherFeedback } from '../types/exam';
 import { SAMPLE_IHK_EXAM } from '../data/sampleExam';
@@ -76,7 +91,7 @@ export function initFirebase(): void {
         const currentApp = getApp();
       }
       appInstance = initializeApp(customConfig, `sbsz_${Date.now()}`);
-      db = getFirestore(appInstance);
+      db = createPersistentFirestore(appInstance);
       if (customConfig.storageBucket) {
         storage = getStorage(appInstance);
       }
@@ -103,7 +118,7 @@ export function initFirebase(): void {
         appId: (import.meta as any).env?.VITE_FIREBASE_APP_ID || '',
       };
       appInstance = getApps().length === 0 ? initializeApp(envConfig) : getApp();
-      db = getFirestore(appInstance);
+      db = createPersistentFirestore(appInstance);
       storage = getStorage(appInstance);
       console.log('[Firebase] Initialisiert über Vite .env Variablen:', envProjectId);
       return;
@@ -116,7 +131,7 @@ export function initFirebase(): void {
   if (DEFAULT_FIREBASE_CONFIG.projectId && DEFAULT_FIREBASE_CONFIG.apiKey) {
     try {
       appInstance = getApps().length === 0 ? initializeApp(DEFAULT_FIREBASE_CONFIG) : getApp();
-      db = getFirestore(appInstance);
+      db = createPersistentFirestore(appInstance);
       storage = getStorage(appInstance);
       console.log('[Firebase] Initialisiert über hinterlegtes SBSZ Firebase-Projekt:', DEFAULT_FIREBASE_CONFIG.projectId);
       return;
