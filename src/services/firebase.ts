@@ -14,6 +14,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   Firestore,
 } from 'firebase/firestore';
@@ -595,7 +596,7 @@ export async function getStudentSubmission(examId: string, studentId: string): P
     }
 
     // 3. Fallback: Query nach studentId oder studentCode
-    const q1 = query(collection(db, SUBMISSIONS_COLLECTION), where('examId', '==', examId), where('studentId', '==', studentId));
+    const q1 = query(collection(db, SUBMISSIONS_COLLECTION), where('examId', '==', examId), where('studentId', '==', studentId), limit(1));
     const snap1 = await getDocs(q1);
     if (!snap1.empty) {
       const data = mergeWithLocal(snap1.docs[0].data() as ExamSubmission);
@@ -603,7 +604,7 @@ export async function getStudentSubmission(examId: string, studentId: string): P
       return data;
     }
 
-    const q2 = query(collection(db, SUBMISSIONS_COLLECTION), where('examId', '==', examId), where('studentCode', '==', studentId));
+    const q2 = query(collection(db, SUBMISSIONS_COLLECTION), where('examId', '==', examId), where('studentCode', '==', studentId), limit(1));
     const snap2 = await getDocs(q2);
     if (!snap2.empty) {
       const data = mergeWithLocal(snap2.docs[0].data() as ExamSubmission);
