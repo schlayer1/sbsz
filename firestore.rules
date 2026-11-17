@@ -1,0 +1,352 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model & Auth Context
+    // ===============================================================
+    //
+    // Project: sbsz-ihk-pruefungen
+    // Auth Context:
+    //   This application uses client-side mnemonic student codes (e.g. "LMUE")
+    //   and a client-side teacher PIN without Firebase Authentication
+    //   (request.auth == null). Consequently, these rules DO NOT require
+    //   request.auth != null, and instead enforce strict collection scoping,
+    //   root default-deny, field allowlists, type/enum/range validation,
+    //   size bounds (DoS protection), immutable identifiers, and safe
+    //   legacy/partial-merge updates.
+    //
+    // Collection: sbsz_exams/{examId} (ExamDefinition)
+    // Fields:
+    //   - id: string (required on create, 1..128 chars, == examId, immutable)
+    //   - title: string (required, 1..300 chars)
+    //   - subtitle: string (required, 0..400 chars)
+    //   - examCode: string (required, 0..100 chars)
+    //   - profession: string (required, 0..200 chars)
+    //   - subject: string (required, 0..200 chars)
+    //   - season: string (required, 0..100 chars)
+    //   - totalQuestions: number (required, 1..200)
+    //   - requiredQuestions: number (required, 1..200, <= totalQuestions)
+    //   - maxDeselections: number (required, 0..50, <= totalQuestions)
+    //   - nonDeselectableQuestions: list (required, max 200 items)
+    //   - questions: list (required, max 200 items)
+    //   - solutions: map (required, max 200 entries)
+    //   - pdfUrl: string (required, 0..2048 chars)
+    //   - solutionPdfUrl: string (optional, 0..2048 chars)
+    //   - pageCount: number (required, 1..1000)
+    //   - assignedClasses: list (required, max 100 items)
+    //   - assignedStudents: list (required, max 500 items)
+    //   - isActive: bool (required)
+    //   - createdAt: number (required, epoch ms >= 0, immutable)
+    //   - createdBy: string (required, 0..200 chars)
+    //
+    // Collection: sbsz_students/{studentId} (StudentProfile)
+    // Fields:
+    //   - id: string (required, 1..128 chars, immutable)
+    //   - studentCode: string (required, 1..20 chars)
+    //   - firstName: string (required, 1..100 chars)
+    //   - lastName: string (required, 1..100 chars)
+    //   - fullName: string (required, 1..200 chars)
+    //   - className: string (required, 1..50 chars)
+    //   - createdAt: number (required, epoch ms >= 0, immutable)
+    //   - lastLoginAt: number (required, epoch ms >= 0)
+    //
+    // Collection: sbsz_submissions/{submissionId} (ExamSubmission)
+    // Fields:
+    //   - id: string (required on full create, 1..200 chars, immutable)
+    //   - examId: string (required on full create, 1..128 chars, immutable)
+    //   - studentId: string (required on full create, 1..128 chars, immutable)
+    //   - studentCode: string (required on full create, 0..20 chars)
+    //   - studentName: string (required on full create, 0..200 chars)
+    //   - className: string (required on full create, 0..50 chars)
+    //   - answers: map (required on full create, max 200 entries)
+    //   - deselected: list (required on full create, max 50 items)
+    //   - status: string (required on full create, 'in_bearbeitung' | 'abgegeben', cannot revert from 'abgegeben')
+    //   - startedAt: number (required on full create, epoch ms >= 0)
+    //   - updatedAt: number (required on full create, epoch ms >= 0)
+    //   - submittedAt: number (optional, epoch ms >= 0)
+    //   - score: map (optional, ExamScore)
+    //   - feedback: map (optional, TeacherFeedback; also allowed as upsert create via setDoc merge)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasOnlyAllowedUpdates(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    function noRemovedFields() {
+      return request.resource.data.diff(resource.data).removedKeys().size() == 0;
+    }
+
+    function isImmutable(field) {
+      return !(field in resource.data) || request.resource.data[field] == resource.data[field];
+    }
+
+    function isNonEmptyString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isBoundedString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isBoundedNumber(val, minVal, maxVal) {
+      return val is number && val >= minVal && val <= maxVal;
+    }
+
+    function isBoundedList(val, maxSize) {
+      return val is list && val.size() <= maxSize;
+    }
+
+    function isBoundedMap(val, maxSize) {
+      return val is map && val.size() <= maxSize;
+    }
+
+    // ===============================================================
+    // Domain Validators: sbsz_exams (ExamDefinition)
+    // ===============================================================
+
+    function examAllowedFields() {
+      return [
+        'id', 'title', 'subtitle', 'examCode', 'profession', 'subject', 'season',
+        'totalQuestions', 'requiredQuestions', 'maxDeselections',
+        'nonDeselectableQuestions', 'questions', 'solutions',
+        'pdfUrl', 'solutionPdfUrl', 'pageCount',
+        'assignedClasses', 'assignedStudents', 'isActive',
+        'createdAt', 'createdBy'
+      ];
+    }
+
+    function examRequiredFields() {
+      return [
+        'id', 'title', 'subtitle', 'examCode', 'profession', 'subject', 'season',
+        'totalQuestions', 'requiredQuestions', 'maxDeselections',
+        'nonDeselectableQuestions', 'questions', 'solutions',
+        'pdfUrl', 'pageCount',
+        'assignedClasses', 'assignedStudents', 'isActive',
+        'createdAt', 'createdBy'
+      ];
+    }
+
+    function isValidExamData(data) {
+      return (!('id' in data) || isNonEmptyString(data.id, 1, 128)) &&
+             (!('title' in data) || isNonEmptyString(data.title, 1, 300)) &&
+             (!('subtitle' in data) || isBoundedString(data.subtitle, 400)) &&
+             (!('examCode' in data) || isBoundedString(data.examCode, 100)) &&
+             (!('profession' in data) || isBoundedString(data.profession, 200)) &&
+             (!('subject' in data) || isBoundedString(data.subject, 200)) &&
+             (!('season' in data) || isBoundedString(data.season, 100)) &&
+             (!('totalQuestions' in data) || isBoundedNumber(data.totalQuestions, 1, 200)) &&
+             (!('requiredQuestions' in data) || isBoundedNumber(data.requiredQuestions, 1, 200)) &&
+             (!('maxDeselections' in data) || isBoundedNumber(data.maxDeselections, 0, 50)) &&
+             (!('requiredQuestions' in data) || !('totalQuestions' in data) || data.requiredQuestions <= data.totalQuestions) &&
+             (!('maxDeselections' in data) || !('totalQuestions' in data) || data.maxDeselections <= data.totalQuestions) &&
+             (!('nonDeselectableQuestions' in data) || isBoundedList(data.nonDeselectableQuestions, 200)) &&
+             (!('questions' in data) || isBoundedList(data.questions, 200)) &&
+             (!('solutions' in data) || isBoundedMap(data.solutions, 200)) &&
+             (!('pdfUrl' in data) || isBoundedString(data.pdfUrl, 2048)) &&
+             (!('solutionPdfUrl' in data) || isBoundedString(data.solutionPdfUrl, 2048)) &&
+             (!('pageCount' in data) || isBoundedNumber(data.pageCount, 1, 1000)) &&
+             (!('assignedClasses' in data) || isBoundedList(data.assignedClasses, 100)) &&
+             (!('assignedStudents' in data) || isBoundedList(data.assignedStudents, 500)) &&
+             (!('isActive' in data) || data.isActive is bool) &&
+             (!('createdAt' in data) || isBoundedNumber(data.createdAt, 0, 9999999999999)) &&
+             (!('createdBy' in data) || isBoundedString(data.createdBy, 200));
+    }
+
+    // ===============================================================
+    // Domain Validators: sbsz_students (StudentProfile)
+    // ===============================================================
+
+    function studentAllowedFields() {
+      return [
+        'id', 'studentCode', 'firstName', 'lastName',
+        'fullName', 'className', 'createdAt', 'lastLoginAt'
+      ];
+    }
+
+    function isValidStudentData(data) {
+      return (!('id' in data) || isNonEmptyString(data.id, 1, 128)) &&
+             (!('studentCode' in data) || isNonEmptyString(data.studentCode, 1, 20)) &&
+             (!('firstName' in data) || isNonEmptyString(data.firstName, 1, 100)) &&
+             (!('lastName' in data) || isNonEmptyString(data.lastName, 1, 100)) &&
+             (!('fullName' in data) || isNonEmptyString(data.fullName, 1, 200)) &&
+             (!('className' in data) || isNonEmptyString(data.className, 1, 50)) &&
+             (!('createdAt' in data) || isBoundedNumber(data.createdAt, 0, 9999999999999)) &&
+             (!('lastLoginAt' in data) || isBoundedNumber(data.lastLoginAt, 0, 9999999999999));
+    }
+
+    // ===============================================================
+    // Domain Validators: sbsz_submissions (ExamSubmission)
+    // ===============================================================
+
+    function submissionAllowedFields() {
+      return [
+        'id', 'examId', 'studentId', 'studentCode', 'studentName', 'className',
+        'answers', 'deselected', 'status', 'startedAt', 'updatedAt',
+        'submittedAt', 'score', 'feedback'
+      ];
+    }
+
+    function submissionRequiredFields() {
+      return [
+        'id', 'examId', 'studentId', 'studentCode', 'studentName', 'className',
+        'answers', 'deselected', 'status', 'startedAt', 'updatedAt'
+      ];
+    }
+
+    function isValidExamScore(score) {
+      return score is map &&
+             score.keys().hasOnly([
+               'totalPoints', 'maxPoints', 'percentage', 'grade', 'gradeText',
+               'answeredCount', 'deselectedCount', 'correctCount', 'errorCount',
+               'questionEvaluations'
+             ]) &&
+             score.keys().hasAll([
+               'totalPoints', 'maxPoints', 'percentage', 'grade', 'gradeText',
+               'answeredCount', 'deselectedCount', 'correctCount', 'errorCount',
+               'questionEvaluations'
+             ]) &&
+             isBoundedNumber(score.totalPoints, 0, 200) &&
+             isBoundedNumber(score.maxPoints, 1, 200) &&
+             isBoundedNumber(score.percentage, 0, 100) &&
+             isBoundedNumber(score.grade, 1, 6) &&
+             isNonEmptyString(score.gradeText, 1, 50) &&
+             isBoundedNumber(score.answeredCount, 0, 200) &&
+             isBoundedNumber(score.deselectedCount, 0, 50) &&
+             isBoundedNumber(score.correctCount, 0, 200) &&
+             isBoundedNumber(score.errorCount, 0, 200) &&
+             isBoundedMap(score.questionEvaluations, 200);
+    }
+
+    function isValidTeacherFeedback(fb) {
+      return fb is map &&
+             fb.keys().hasOnly([
+               'id', 'submissionId', 'studentId', 'examId', 'text',
+               'strengths', 'weaknesses', 'learningTips', 'references',
+               'generatedAt', 'sentAt', 'isSent', 'teacherName'
+             ]) &&
+             fb.keys().hasAll([
+               'id', 'submissionId', 'studentId', 'examId', 'text',
+               'strengths', 'weaknesses', 'learningTips', 'references',
+               'generatedAt', 'isSent', 'teacherName'
+             ]) &&
+             isNonEmptyString(fb.id, 1, 128) &&
+             isNonEmptyString(fb.submissionId, 1, 200) &&
+             isNonEmptyString(fb.studentId, 1, 128) &&
+             isNonEmptyString(fb.examId, 1, 128) &&
+             isNonEmptyString(fb.text, 1, 20000) &&
+             isBoundedList(fb.strengths, 50) &&
+             isBoundedList(fb.weaknesses, 50) &&
+             isBoundedList(fb.learningTips, 50) &&
+             isBoundedList(fb.references, 50) &&
+             isBoundedNumber(fb.generatedAt, 0, 9999999999999) &&
+             (!('sentAt' in fb) || isBoundedNumber(fb.sentAt, 0, 9999999999999)) &&
+             fb.isSent is bool &&
+             isNonEmptyString(fb.teacherName, 1, 150);
+    }
+
+    function isValidSubmissionData(data) {
+      return (!('id' in data) || isNonEmptyString(data.id, 1, 200)) &&
+             (!('examId' in data) || isNonEmptyString(data.examId, 1, 128)) &&
+             (!('studentId' in data) || isNonEmptyString(data.studentId, 1, 128)) &&
+             (!('studentCode' in data) || isBoundedString(data.studentCode, 20)) &&
+             (!('studentName' in data) || isBoundedString(data.studentName, 200)) &&
+             (!('className' in data) || isBoundedString(data.className, 50)) &&
+             (!('answers' in data) || isBoundedMap(data.answers, 200)) &&
+             (!('deselected' in data) || isBoundedList(data.deselected, 50)) &&
+             (!('status' in data) || data.status in ['in_bearbeitung', 'abgegeben']) &&
+             (!('startedAt' in data) || isBoundedNumber(data.startedAt, 0, 9999999999999)) &&
+             (!('updatedAt' in data) || isBoundedNumber(data.updatedAt, 0, 9999999999999)) &&
+             (!('submittedAt' in data) || isBoundedNumber(data.submittedAt, 0, 9999999999999)) &&
+             (!('score' in data) || isValidExamScore(data.score)) &&
+             (!('feedback' in data) || isValidTeacherFeedback(data.feedback));
+    }
+
+    function isValidSubmissionStatusTransition() {
+      return !('status' in resource.data) ||
+             resource.data.status == 'in_bearbeitung' ||
+             request.resource.data.status == 'abgegeben';
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Exam definitions: read/subscribed by all clients, managed by teacher dashboard
+    match /sbsz_exams/{examId} {
+      allow read: if true;
+
+      allow create: if hasOnlyAllowedFields(examAllowedFields()) &&
+                       hasRequiredFields(examRequiredFields()) &&
+                       request.resource.data.id == examId &&
+                       isValidExamData(request.resource.data);
+
+      allow update: if hasOnlyAllowedUpdates(examAllowedFields()) &&
+                       noRemovedFields() &&
+                       isImmutable('id') &&
+                       isImmutable('createdAt') &&
+                       isValidExamData(request.resource.data);
+
+      allow delete: if true;
+    }
+
+    // Student profiles: queried by studentCode & listed by teacher dashboard
+    match /sbsz_students/{studentId} {
+      allow read: if true;
+
+      allow create: if hasOnlyAllowedFields(studentAllowedFields()) &&
+                       hasRequiredFields(studentAllowedFields()) &&
+                       isValidStudentData(request.resource.data);
+
+      allow update: if hasOnlyAllowedUpdates(studentAllowedFields()) &&
+                       noRemovedFields() &&
+                       isImmutable('id') &&
+                       isImmutable('createdAt') &&
+                       isValidStudentData(request.resource.data);
+
+      allow delete: if false;
+    }
+
+    // Exam submissions: auto-saved, submitted, evaluated, and annotated with teacher feedback
+    match /sbsz_submissions/{submissionId} {
+      allow read: if true;
+
+      // Supports both full ExamSubmission creation and partial feedback upsert (setDoc merge on missing doc)
+      allow create: if hasOnlyAllowedFields(submissionAllowedFields()) &&
+                       (
+                         hasRequiredFields(submissionRequiredFields()) ||
+                         ('feedback' in request.resource.data && isValidTeacherFeedback(request.resource.data.feedback))
+                       ) &&
+                       isValidSubmissionData(request.resource.data);
+
+      allow update: if hasOnlyAllowedUpdates(submissionAllowedFields()) &&
+                       noRemovedFields() &&
+                       isImmutable('id') &&
+                       isImmutable('examId') &&
+                       isImmutable('studentId') &&
+                       isValidSubmissionStatusTransition() &&
+                       isValidSubmissionData(request.resource.data);
+
+      allow delete: if true;
+    }
+
+    // Root Default Deny: reject all access to any other collection or subcollection
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
