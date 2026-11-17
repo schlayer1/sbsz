@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { Navbar } from './components/Navbar';
-import { PdfViewer } from './components/PdfViewer';
 import { DigitalAnswerSheet } from './components/DigitalAnswerSheet';
-import { StudentResultView } from './components/StudentResultView';
 import { StudentDashboard } from './components/StudentDashboard';
-import { TeacherDashboard } from './components/TeacherDashboard';
 import { StudentAuthModal } from './components/StudentAuthModal';
 import { TeacherAuthModal } from './components/TeacherAuthModal';
 import { StudentFeedbackModal } from './components/StudentFeedbackModal';
+
+const PdfViewer = lazy(() => import('./components/PdfViewer').then((m) => ({ default: m.PdfViewer })));
+const StudentResultView = lazy(() => import('./components/StudentResultView').then((m) => ({ default: m.StudentResultView })));
+const TeacherDashboard = lazy(() => import('./components/TeacherDashboard').then((m) => ({ default: m.TeacherDashboard })));
 import { SAMPLE_IHK_EXAM } from './data/sampleExam';
 import {
   ExamDefinition,
@@ -370,20 +371,22 @@ export function App() {
         {/* VIEW 1: LEHRER DASHBOARD */}
         {/* ========================================================= */}
         {isTeacherMode ? (
-          <TeacherDashboard
-            onSelectExamForPreview={(exam) => {
-              setActiveExam(exam);
-              setIsTeacherMode(false);
-              setActiveView('exam');
-            }}
-            onClose={() => {
-              setIsTeacherMode(false);
-              setActiveView('dashboard');
-            }}
-            onExamsChange={(updated) => {
-              setExams(updated);
-            }}
-          />
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8 text-sm font-semibold text-slate-500">Lehrer-Dashboard wird geladen…</div>}>
+            <TeacherDashboard
+              onSelectExamForPreview={(exam) => {
+                setActiveExam(exam);
+                setIsTeacherMode(false);
+                setActiveView('exam');
+              }}
+              onClose={() => {
+                setIsTeacherMode(false);
+                setActiveView('dashboard');
+              }}
+              onExamsChange={(updated) => {
+                setExams(updated);
+              }}
+            />
+          </Suspense>
         ) : activeView === 'dashboard' ? (
           /* ========================================================= */
           /* VIEW 1: SCHÜLER PRÜFUNGSDASHBOARD (KACHELN) */
@@ -430,30 +433,32 @@ export function App() {
           /* ========================================================= */
           /* VIEW 2: SCHÜLER ERGEBNIS & AUSWERTUNG */
           /* ========================================================= */
-          <StudentResultView
-            exam={activeExam}
-            submission={currentSubmission}
-            onRetakeExam={() => {
-              setDrillMode(false);
-              setActiveView('exam');
-            }}
-            onJumpToPdfPage={(pageNum) => {
-              setCurrentPage(pageNum);
-              setActiveView('exam');
-              setMobileTab('pdf');
-            }}
-            studentSubmissions={studentSubmissions}
-            exams={exams}
-            onSelectSubmissionExam={(examId) => {
-              const target = exams.find((e) => e.id === examId);
-              if (target) {
-                setActiveExam(target);
-              }
-            }}
-            onOpenFeedbackOverview={() => setShowFeedbackModal(true)}
-            onStartDrillMode={handleStartDrillMode}
-            onBackToDashboard={() => setActiveView('dashboard')}
-          />
+          <Suspense fallback={<div className="flex-1 flex items-center justify-center p-8 text-sm font-semibold text-slate-500">Auswertung wird geladen…</div>}>
+            <StudentResultView
+              exam={activeExam}
+              submission={currentSubmission}
+              onRetakeExam={() => {
+                setDrillMode(false);
+                setActiveView('exam');
+              }}
+              onJumpToPdfPage={(pageNum) => {
+                setCurrentPage(pageNum);
+                setActiveView('exam');
+                setMobileTab('pdf');
+              }}
+              studentSubmissions={studentSubmissions}
+              exams={exams}
+              onSelectSubmissionExam={(examId) => {
+                const target = exams.find((e) => e.id === examId);
+                if (target) {
+                  setActiveExam(target);
+                }
+              }}
+              onOpenFeedbackOverview={() => setShowFeedbackModal(true)}
+              onStartDrillMode={handleStartDrillMode}
+              onBackToDashboard={() => setActiveView('dashboard')}
+            />
+          </Suspense>
         ) : (
           /* ========================================================= */
           /* VIEW 3: SCHÜLER WORKBENCH (SPLIT-SCREEN PDF & BOGEN) */
@@ -606,12 +611,14 @@ export function App() {
                   mobileTab === 'pdf' ? 'block' : 'hidden lg:block'
                 }`}
               >
-                <PdfViewer
-                  exam={activeExam}
-                  currentPage={currentPage}
-                  onPageChange={setCurrentPage}
-                  jumpToDrawing={() => setCurrentPage(10)}
-                />
+                <Suspense fallback={<div className="h-full flex items-center justify-center text-sm text-slate-500">PDF-Ansicht wird geladen…</div>}>
+                  <PdfViewer
+                    exam={activeExam}
+                    currentPage={currentPage}
+                    onPageChange={setCurrentPage}
+                    jumpToDrawing={() => setCurrentPage(10)}
+                  />
+                </Suspense>
               </div>
 
               {/* Right Column: Digital Answer Sheet */}
