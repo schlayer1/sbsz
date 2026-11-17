@@ -71,12 +71,19 @@ export function saveActiveDriveFolderId(folderId: string): void {
   }
 }
 
+const DRIVE_LIST_CACHE_TTL_MS = 30_000;
+const DRIVE_FETCH_TIMEOUT_MS = 20_000;
+
+const driveFolderCache = new Map<string, { files: GoogleDriveFile[]; cachedAt: number }>();
+const inFlightDriveFetches = new Map<string, Promise<GoogleDriveFile[]>>();
+
 /**
  * Ruft alle PDF-Dateien aus dem konfigurierten Google Drive Ordner ab
  */
 export async function fetchDriveFolderFiles(
   scriptUrl?: string,
-  folderId?: string
+  folderId?: string,
+  options?: { forceRefresh?: boolean }
 ): Promise<GoogleDriveFile[]> {
   const url = scriptUrl || getActiveAppsScriptUrl();
   const fId = folderId || getActiveDriveFolderId();
@@ -87,23 +94,62 @@ export async function fetchDriveFolderFiles(
 
   const endpoint = fId ? `${url}?folderId=${encodeURIComponent(fId)}` : url;
 
-  const response = await fetch(endpoint, {
-    method: 'GET',
-    headers: {
-      Accept: 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Google Apps Script HTTP Fehler: ${response.status} ${response.statusText}`);
+  const cached = driveFolderCache.get(endpoint);
+  if (!options?.forceRefresh && cached && Date.now() - cached.cachedAt < DRIVE_LIST_CACHE_TTL_MS) {
+    return cached.files;
   }
 
-  const data = await response.json();
-  if (data && data.error) {
-    throw new Error(`Google Drive Fehler: ${data.error}`);
+  const existing = inFlightDriveFetches.get(endpoint);
+  if (existing) {
+    return existing;
   }
 
-  return (Array.isArray(data) ? data : []) as GoogleDriveFile[];
+  const promise = (async () => {
+    try {
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(DRIVE_FETCH_TIMEOUT_MS),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Google Apps Script HTTP Fehler: ${response.status} ${response.statusText}`);
+      }
+
+      const rawText = await response.text();
+      const trimmed = rawText.trim();
+      if (!trimmed) {
+        throw new Error('Google Apps Script hat eine leere Antwort geliefert.');
+      }
+      if (trimmed.startsWith('<')) {
+        throw new Error(
+          'Google Apps Script hat HTML statt JSON geliefert (Anmeldung/Berechtigung prüfen: Bereitstellung auf "Jeder" setzen).'
+        );
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(trimmed);
+      } catch {
+        throw new Error('Ungültige JSON-Antwort vom Google Apps Script.');
+      }
+
+      if (data && data.error) {
+        throw new Error(`Google Drive Fehler: ${data.error}`);
+      }
+
+      const files = (Array.isArray(data) ? data : []) as GoogleDriveFile[];
+      driveFolderCache.set(endpoint, { files, cachedAt: Date.now() });
+      return files;
+    } finally {
+      inFlightDriveFetches.delete(endpoint);
+    }
+  })();
+
+  inFlightDriveFetches.set(endpoint, promise);
+  return promise;
 }
 
 /**

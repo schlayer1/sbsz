@@ -736,7 +736,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
       saveActiveDriveFolderId(driveFolderId);
       saveActiveAppsScriptUrl(appsScriptUrl);
 
-      const files = await fetchDriveFolderFiles(appsScriptUrl, driveFolderId);
+      const files = await fetchDriveFolderFiles(appsScriptUrl, driveFolderId, { forceRefresh: true });
       const bundles = pairExamFiles(files);
       setDiscoveredBundles(bundles);
 
